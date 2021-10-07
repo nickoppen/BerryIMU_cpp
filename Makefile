@@ -6,11 +6,11 @@ berry01: berry01.o
 	g++ -lm -li2c berry01.o 
 
 berry01.o: berry01.cpp berryimu.o
-	echo "\nCompiling berry01\n"
+	echo "\nCompiling berry01:\n"
 	g++ -c  -o berry01.o berry01.cpp
 
 berryimu.h.gch: berryimu.h berryimuDefinitions.h
-	echo "\nCompiling berryimu\n"
+	echo "\nPrecompiling berryimu header file:\n"
 	g++ -c -o berryimu.h.gch berryimu.h
 
 
