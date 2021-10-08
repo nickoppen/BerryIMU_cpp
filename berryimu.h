@@ -67,15 +67,16 @@ extern "C"
  * */
 namespace BerryIMU
 {
-	class IMU
-	{
-		enum sensor_type
+	enum sensor_type
 		{
 			ACC,
 			GYR,
 			MAG,
 			TP
 		};
+
+	class IMU
+	{
 		// The following enums contain the bit flags which are used to set
 		// the mode in the device
 
@@ -165,7 +166,7 @@ namespace BerryIMU
 				setMessage("Warning: Use dedicated function readTandP(..)");
 				return false;
 			default:
-				throw ("unknown sensor_type");
+				throw (1);
 			}
 			if (readBlock(register_address, sizeof(block), block))
 			{
@@ -179,7 +180,7 @@ namespace BerryIMU
 		{
 			int16_t raw_signal[3];
 			bool ret = readRaw(type, raw_signal, reuse_device);
-			double _gain = gain(type);
+			double _gain = gain();
 			output[0] = raw_signal[0] * _gain;
 			output[1] = raw_signal[1] * _gain;
 			output[2] = raw_signal[2] * _gain;
@@ -610,6 +611,7 @@ namespace BerryIMU
 			return true;
 		}
 
+		virtual double gain() = 0;
 
 	      private:
 		//float gain (sensor_type type)
@@ -664,11 +666,6 @@ namespace BerryIMU
 		//	}
 		//}
 
-		int m_i2c_file = -1;
-//		float m_last_temperature_reading = 0.;
-		std::string m_message;
-		bool m_fifo_g = false, m_fifo_a = false;
-
 		// Helper functions
 		void decoupleDataBlock (int16_t *a, uint8_t *block)
 		{
@@ -676,8 +673,6 @@ namespace BerryIMU
 			*(a + 1) = (int16_t) (block[2] | block[3] << 8);
 			*(a + 2) = (int16_t) (block[4] | block[5] << 8);
 		}
-		void usleep (int microseconds) { std::this_thread::sleep_for (std::chrono::microseconds (microseconds)); }
-		void msleep (int milliseconds) { usleep (1000 * milliseconds); }
 		bool selectDevice (sensor_type type)
 		{
 			int addr;
@@ -726,19 +721,6 @@ namespace BerryIMU
 			return true;
 		}
 
-		void readReg (uint8_t command, uint8_t &data) { data = i2c_smbus_read_byte_data(m_i2c_file, command); }
-		bool writeReg (sensor_type type, uint8_t reg, uint8_t value)
-		{
-			selectDevice(type);
-			if (-1 == i2c_smbus_write_byte_data(m_i2c_file, reg, value))
-			{
-				setMessage("Failed to write byte to I2C.");
-				return false;
-			}
-			return true;
-		}
-
-		uint8_t readReg (uint8_t command) { return i2c_smbus_read_byte_data(m_i2c_file, command); }
 
 		inline int getWaitingTimeTemperature ()
 		{
@@ -766,19 +748,45 @@ namespace BerryIMU
 			return -1;
 		}
 
-		void setMessage (std::string msg) { m_message = msg; }
 
 		// return two bytes from data as a signed 16-bit value
 		int16_t get_short(uint8_t* data, int index) { return ((data[index] << 8) + data[index + 1]); }
 		uint16_t get_ushort(uint8_t* data, int index) { return ((data[index] << 8) + data[index + 1]); }
 
+	protected:
+		void readReg (uint8_t command, uint8_t &data) { data = i2c_smbus_read_byte_data(m_i2c_file, command); }
+
+		bool writeReg (sensor_type type, uint8_t reg, uint8_t value)
+		{
+			selectDevice(type);
+			if (-1 == i2c_smbus_write_byte_data(m_i2c_file, reg, value))
+			{
+				setMessage("Failed to write byte to I2C.");
+				return false;
+			}
+			return true;
+		}
+
+		uint8_t readReg (uint8_t command) { return i2c_smbus_read_byte_data(m_i2c_file, command); }
+
+		void setMessage (std::string msg) { m_message = msg; }
+
+		void usleep (int microseconds) { std::this_thread::sleep_for (std::chrono::microseconds (microseconds)); }
+		void msleep (int milliseconds) { usleep (1000 * milliseconds); }
+
+		int m_i2c_file = -1;
+//		float m_last_temperature_reading = 0.;
+		std::string m_message;
+		bool m_fifo_g = false, m_fifo_a = false;
+
+
 	};
 
-	class ACC : IMU
+	class Acc : IMU
 	{
 	public:
 
-		ACC() : IMU()
+		Acc() : IMU()
 		{
 			_accState.odr = A_ODR_200Hz;
 			_accState.scale = A_SCALE_2g;
@@ -790,21 +798,15 @@ namespace BerryIMU
 			if (IMU::enableIMU())
 			{
 				// Enable accelerometer.
-				configureAcc(_accState.scale, _accState.aa_bw, _accState.selftest, _accState.spi_interface_mode);
-				configureAcc(_accState.odr, _accState.bdu, _accState.enableX, _accState.enableY, _accState.enableZ);
+				configure(_accState.scale, _accState.aa_bw, _accState.selftest, _accState.spi_interface_mode);
+				configure(_accState.odr, _accState.bdu, _accState.enableX, _accState.enableY, _accState.enableZ);
 				return true;
 			}
 			return false;
 		}
-		bool disable()
-		{
-			return IMU::disableIMU;
-		}
+		bool disable()	{return IMU::disableIMU();}
 
-		bool read(double* output)
-		{
-			return IMU::read(ACC, output, false);
-		}
+		bool read(double* output){return IMU::read(ACC, output, false);}
 
 		void setDatarate(acc_odr datarate)
 		{ // see mag
@@ -814,7 +816,7 @@ namespace BerryIMU
 			value |= (datarate << 4);
 			writeReg(ACC, CTRL_REG1_XM, value);
 		}
-		bool configureAcc(acc_odr datarate, acc_bdu bdu = A_CONTINUOUS_UPDATE, bool enableX = true, bool enableY = true, bool enableZ = true)
+		bool configure(acc_odr datarate, acc_bdu bdu = A_CONTINUOUS_UPDATE, bool enableX = true, bool enableY = true, bool enableZ = true)
 		{
 			// Configuration according to Tab. 71
 			// Bitmasking just in case
@@ -835,7 +837,7 @@ namespace BerryIMU
 			return writeReg(ACC, CTRL_REG1_XM, value);
 		}
 
-		bool configureAcc(acc_scale scale, acc_aa_bandwidth anti_alias_bandwidth = A_BANDWIDTH_773Hz, acc_selftest_mode selftest = A_TEST_OFF, bool spi_interface_mode = 0)
+		bool configure(acc_scale scale, acc_aa_bandwidth anti_alias_bandwidth = A_BANDWIDTH_773Hz, acc_selftest_mode selftest = A_TEST_OFF, bool spi_interface_mode = 0)
 		{
 			// Configuration according to Tab. 74
 			// Bitmasking just in case
@@ -859,8 +861,7 @@ namespace BerryIMU
 			c = readReg(CTRL_REG0_XM);
 			writeReg(ACC, CTRL_REG0_XM, c | 0x40); // Enable gyro FIFO
 			msleep(20);				// Wait for change to take effect
-			writeReg(ACC, FIFO_CTRL_REG,
-				0x20 | 0x1F); // Enable gyro FIFO stream mode and set watermark at 32 samples
+			writeReg(ACC, FIFO_CTRL_REG, 0x20 | 0x1F); // Enable gyro FIFO stream mode and set watermark at 32 samples
 			m_fifo_a = true;
 			// delay 1000 milliseconds to collect FIFO samples
 		}
@@ -886,9 +887,7 @@ namespace BerryIMU
 
 		AccState _accState;
 
-	private:
-
-		float gain(sensor_type type)
+		double gain()
 		{
 			// Possible gains
 			switch (_accState.scale)
@@ -904,16 +903,15 @@ namespace BerryIMU
 			case A_SCALE_16g:
 				return 0.732;
 			default:
-				throw ("accscale not defined");
+				throw (2);
 			}
-
 		}
 	};
 
-	class GYR : IMU
+	class Gyr : IMU
 	{
 	public:
-		GYR() : IMU()
+		Gyr() : IMU()
 		{
 			_gyrState.scale = G_SCALE_245dps;
 			_gyrState.odr = G_ODR_190_BW_125;
@@ -924,9 +922,9 @@ namespace BerryIMU
 			if (IMU::enableIMU())
 			{
 				// Enable Gyro
-				configureGyr(_gyrState.scale, _gyrState.bdu, _configState.bigendian, _gyrState.selftest, _gyrState.spi_interface_mode);
-				configureGyr(_gyrState.highpassmode, _gyrState.highpasscutoff);
-				configureGyr(_gyrState.odr, _gyrState.power, _gyrState.enableX, _gyrState.enableY, _gyrState.enableZ);
+				configure(_gyrState.scale, _gyrState.bdu, _configState.bigendian, _gyrState.selftest, _gyrState.spi_interface_mode);
+				configure(_gyrState.highpassmode, _gyrState.highpasscutoff);
+				configure(_gyrState.odr, _gyrState.power, _gyrState.enableX, _gyrState.enableY, _gyrState.enableZ);
 				return true;
 			}
 			return false;
@@ -1036,8 +1034,7 @@ namespace BerryIMU
 
 		GyrState _gyrState;
 
-	private:
-		float gain(sensor_type type)
+		double gain()
 		{
 			switch (_gyrState.scale)
 			{
@@ -1048,16 +1045,16 @@ namespace BerryIMU
 			case G_SCALE_2000dps:
 				return 70.;
 			default:
-				throw ("gyrscale not defined");
+				throw (2);
 			}
 		}
 
 	};
 
-	class MAG : IMU
+	class Mag : IMU
 	{
 	public:
-		MAG() : IMU()
+		Mag() : IMU()
 		{
 			_magState.scale = M_SCALE_2Gs;
 			_magState.odr = M_ODR_100Hz;
@@ -1067,9 +1064,9 @@ namespace BerryIMU
 			if (IMU::enableIMU())
 			{
 				// Enable the magnetometer
-				configureMag(_magState.highpass, _magState.filter, _magState.sensormode, _magState.power);
-				configureMag(_magState.scale);
-				configureMag(_magState.odr, _magState.resolution, _configState.temperature_sensor_activated);
+				configure(_magState.highpass, _magState.filter, _magState.sensormode, _magState.power);
+				configure(_magState.scale);
+				configure(_magState.odr, _magState.resolution, _configState.temperature_sensor_activated);
 				return true;
 			}
 			return false;
@@ -1134,7 +1131,7 @@ namespace BerryIMU
 			_magState.filter = filter;
 			_magState.highpass = highpass;
 			uint8_t value;
-			if (powermode == M_POWER_LOW && _accState.odr != A_ODR_3p125Hz) // this is automatically set by sensor
+			if (powermode == M_POWER_LOW && _magState.odr != M_ODR_3p125Hz) // this is automatically set by sensor
 				setMessage("Mag datarate has been temporarily changed due to power saving mode.");
 			value = (0b11 & sensormode);
 			value |= (0b1 & powermode) << 2;
@@ -1143,16 +1140,8 @@ namespace BerryIMU
 			return writeReg(MAG, CTRL_REG7_XM, value);
 		}
 
-		void enableFIFO()
-		{
-			setMessage("No FIFO for Magnetometer available.");
-		}
-
-		void disableFIFO()
-		{
-			setMessage("No FIFO for Magnetometer available.");
-		}
-
+		void enableFIFO(){setMessage("No FIFO for Magnetometer available.");}
+		void disableFIFO(){setMessage("No FIFO for Magnetometer available.");}
 		int pollFIFO()
 		{
 			setMessage("Error: pollFIFO only defined for GYR and ACC");
@@ -1161,9 +1150,7 @@ namespace BerryIMU
 
 		MagState _magState;
 
-	private:
-
-		float gain()
+		double gain()
 		{
 			switch (_magState.scale)
 			{
@@ -1176,7 +1163,7 @@ namespace BerryIMU
 			case M_SCALE_12Gs:
 				return 0.48;
 			default:
-				throw ("magscale not defined");
+				throw (2);
 			}
 		}
 
@@ -1200,12 +1187,12 @@ namespace BerryIMU
 
 		bool enableTemperatureSensor()
 		{
-			throw ("Not implemented yet");
+			throw (0);
 //			return configureMag(_magState.odr, _magState.resolution, true);
 		}
 		bool disableTemperatureSensor()
 		{
-			throw ("Not implemented yet");
+			throw (0);
 //			return configureMag(_magState.odr, _magState.resolution, false);
 		}
 
@@ -1324,7 +1311,7 @@ namespace BerryIMU
 		void readP(float& P, bool reuse_device = false)
 		{
 			// void readTandP(float & T, float & P,bool reuse_device, bool only_T=false, bool reuse_T=false);
-			throw ("Not implemented yet");
+			throw (0);
 			//			readTandP(m_last_temperature_reading, P, reuse_device, false, true);
 		}
 
@@ -1332,13 +1319,13 @@ namespace BerryIMU
 		void readT(float& T, bool reuse_device = false)
 		{
 //			float discard;
-			throw ("Not implemented yet");
+			throw (0);
 			//			readTandP(T, discard, reuse_device, false);
 		}
 
 		void readTlsm(float& T) // reads T from LSM9DS0
 		{
-			throw ("Not implemented yet");
+			throw (0);
 //			if (_configState.temperature_sensor_activated)
 			//{
 			//	uint8_t buffer[2]; // We'll read two bytes from the temperature sensor into temp
@@ -1357,6 +1344,8 @@ namespace BerryIMU
 			//	// float temperature_f = temperature_c * 1.8 + 32.;
 			//}
 		}
+
+	double gain() { return -1.0; }
 
 	private:
 		float m_last_temperature_reading = 0.;
