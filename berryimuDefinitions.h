@@ -203,10 +203,10 @@ namespace BerryIMU
 
 	enum gyr_scale
 	{
-		G_SCALE_245dps = 0,
+		G_SCALE_250dps = 0,
 		G_SCALE_500dps = 1,
-		G_SCALE_2000dps = 2,
-		G_SCALE_2000dpsB = 3
+		G_SCALE_1000dps = 2,
+		G_SCALE_2000dps = 3
 	};
 
 	enum gyro_odr		       // 4 bit
@@ -271,6 +271,23 @@ namespace BerryIMU
 		T_HIGH_RESOLUTION,
 		T_ULTRA_HIGH_RESOLUTION
 	};
+
+	// Should be redundant
+	enum sensor_type
+		{
+			ACC,
+			GYR,
+			MAG,
+			TP
+		};
+
+	enum rotation_units
+		{
+			RPM,
+			RADPERSEC,
+			DEGPERSEC
+		};
+
 
 	// DONT UNDERSTAND YET:
 	enum HighPassMode

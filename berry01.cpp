@@ -18,33 +18,42 @@ int main(int argc, char *argv[])
 		mag = new Mag();
 
 		bool status = acc->enable();
-		if (status)
-		{
-			cout << "Berry Acc is enabled" << endl;
-		}
-		else
+		if (!status)
 		{
 			cout << "Berry Acc failed to enable" << endl;
+			exit(0);
 		}
 
 		status = gyr->enable();
-		if (status)
-		{
-			cout << "Berry Gyr is enabled" << endl;
-		}
-		else
+		if (!status)
 		{
 			cout << "Berry Gyr failed to enable" << endl;
+			exit(0);
 		}
 
 		status = mag->enable();
-		if (status)
-		{
-			cout << "Berry Mag is enabled" << endl;
-		}
-		else
+		if (!status)
 		{
 			cout << "Berry Mag failed to enable" << endl;
+			exit(0);
+		}
+
+		double accData[3];
+		double gyrData[3];
+		double magData[3];
+		long int seconds;
+		float xRot, yRot, zRot;
+
+		int iterations = 1000;
+		while (iterations--)
+		{
+//			acc->read(accData);
+//			gyr->read(gyrData);
+//			mag->read(magData);
+//			cout << "Acc:" << accData[0] << ":" << accData[1] << ":" << accData[2] << "\tMag:" <<  magData[0] << "\tGyr:" << gyrData[0]  << endl;
+			gyrData[0] = gyrData[1] = gyrData[0] = 0.0;
+			gyr->rotation(xRot, yRot, zRot, seconds, DEGPERSEC);
+			cout << "\tGyr:" << gyrData[0]  << ":" << gyrData[1] << ":" << gyrData[2] << endl;
 		}
 
 		delete(acc);

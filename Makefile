@@ -3,7 +3,7 @@
 # rules
 berry01: berry01.o
 	echo "\nLinking...\n\n\n"
-	g++ -lm -li2c berry01.o 
+	g++ -lm -li2c -lrt berry01.o 
 
 berry01.o: berry01.cpp berryimu.h.gch
 	echo "\nCompiling berry01:\n\n\n"
