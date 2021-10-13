@@ -79,11 +79,11 @@ namespace BerryIMU
 		{
 		}
 
-		~IMU()
-		{
-			if (isEnabled())
-				disableIMU();
-		}
+//		~IMU()
+//		{
+//			if (isEnabled())
+//				disableIMU();
+//		}
 
 		public:
 		bool getSensorID (uint8_t &chip_id, uint8_t &version)
@@ -147,42 +147,15 @@ namespace BerryIMU
 			register_address |= registerOffset;
 			if (readBlock(register_address, sizeof(block), block))
 			{
-				decoupleDataBlock(output, block);
+				output[0] = (int16_t)(block[0] | block[1] << 8);
+				output[1] = (int16_t)(block[2] | block[3] << 8);
+				output[2] = (int16_t)(block[4] | block[5] << 8);
 				return true;
 			}
 			return false;
 		}
 
-		bool read (const int registerOffset, double *output, bool reuse_device = false)
-		{
-			int16_t raw_signal[3];
-			bool ret = readRaw(registerOffset, raw_signal, reuse_device);
-			double _gain = gain();
-			output[0] = raw_signal[0] * _gain;
-			output[1] = raw_signal[1] * _gain;
-			output[2] = raw_signal[2] * _gain;
-			return ret;
-		}
-
-
 		const char *getLastMessage () { return m_message.c_str(); }
-
-		configuration _configState;
-
-
-		virtual double gain() = 0;
-
-		virtual bool selectDevice() = 0;
-
-		bool selectDevice (int file, const int addr)
-		{
-			if (ioctl(file, I2C_SLAVE, addr) < 0)
-			{
-				setMessage("Failed to select I2C device.");
-				return false;
-			}
-			return true;
-		}
 
       private:
 
@@ -238,6 +211,20 @@ namespace BerryIMU
 		uint16_t get_ushort(uint8_t* data, int index) { return ((data[index] << 8) + data[index + 1]); }
 
 	protected:
+		virtual double gain() = 0;
+
+		virtual bool selectDevice() = 0;
+
+		bool selectDevice (int file, const int addr)
+		{
+			if (ioctl(file, I2C_SLAVE, addr) < 0)
+			{
+				setMessage("Failed to select I2C device.");
+				return false;
+			}
+			return true;
+		}
+
 		void readReg (uint8_t command, uint8_t &data) { data = i2c_smbus_read_byte_data(m_i2c_file, command); }
 
 		bool writeReg (sensor_type type, uint8_t reg, uint8_t value)
@@ -258,11 +245,11 @@ namespace BerryIMU
 		void usleep (int microseconds) { std::this_thread::sleep_for (std::chrono::microseconds (microseconds)); }
 		void msleep (int milliseconds) { usleep (1000 * milliseconds); }
 
+
 		int m_i2c_file = -1;
-//		float m_last_temperature_reading = 0.;
 		std::string m_message;
 		bool m_fifo_g = false, m_fifo_a = false;
-
+		configuration _configState;
 
 	};
 
@@ -275,6 +262,11 @@ namespace BerryIMU
 			_accState.odr = A_ODR_200Hz;
 			_accState.scale = A_SCALE_2g;
 			_accState.aa_bw = A_BANDWIDTH_50Hz;
+		}
+		~Acc()
+		{
+			if(IMU::isEnabled())
+				IMU::disableIMU();
 		}
 
 		bool enable()
@@ -290,7 +282,10 @@ namespace BerryIMU
 		}
 		bool disable()	{return IMU::disableIMU();}
 
-		bool read(double* output){return IMU::read(OUT_X_L_A, output, false);}
+		bool read(int16_t * output)
+		{
+			return IMU::readRaw(OUT_X_L_A, output, false);
+		}
 
 		void setDatarate(acc_odr datarate)
 		{ // see mag
@@ -394,14 +389,6 @@ namespace BerryIMU
 		bool selectDevice()
 		{
 			return IMU::selectDevice(m_i2c_file, ACC_ADDRESS);
-//			int addr;
-//			addr = ACC_ADDRESS;
-//			if (ioctl(m_i2c_file, I2C_SLAVE, addr) < 0)
-//			{
-//				setMessage("Failed to select I2C device.");
-//				return false;
-//			}
-//			return true;
 		}
 
 	};
@@ -432,31 +419,26 @@ namespace BerryIMU
 			return IMU::disableIMU();
 		}
 
-		bool read(double * output)
+		bool read(int16_t * output)
 		{
-			return IMU::read (OUT_X_L_G, output, false); 
+			return IMU::readRaw(OUT_X_L_G, output, false); 
 		}
 
-		bool rotation(float &xDegPerSec, float &yDegPerSec, float &zDegPerSec, long int &secs,  rotation_units unit = DEGPERSEC)
+		bool rotation(float &xRate, float &yRate, float &zRate, rotation_units unit = DEGPERSEC)
 		{
-			double rotData[3];
-			const double rawToDegAt2000dps = 0.07;
-//			long int timeDifferenceSecs;
-//			double rawToDegPerSecCorrection = gain() * 1000;
+			int16_t rotData[6];			// 12 bytes
+			const float rawToDegAt2000dps = 0.07;
 
-			struct timespec getTime_1;//, getTime_2;
+			struct timespec getTime_1;
 
 			clock_gettime(CLOCK_REALTIME, &getTime_1);
-			read(rotData);
+			IMU::readRaw(OUT_X_L_G, rotData, false);
 
-//			timeDifferenceSecs = (getTime_1.tv_nsec - getTime_2.tv_nsec);//1.0e+9;
-//			secs = timeDifferenceSecs;
-			secs = 42;
-			lastReadingTime =  getTime_1;
+			lastReadingTime =  getTime_1;		// Store the reading time to calculate the degrees turned on the next call
 
-			xDegPerSec = (float)rotData[0] * rawToDegAt2000dps;
-			yDegPerSec = (float)rotData[1] * rawToDegAt2000dps;
-			zDegPerSec = (float)rotData[2] * rawToDegAt2000dps;
+			xRate = (float)rotData[0] * rawToDegAt2000dps;
+			yRate = (float)rotData[1] * rawToDegAt2000dps;
+			zRate = (float)rotData[2] * rawToDegAt2000dps;
 			return true;
 		}
 
@@ -559,11 +541,11 @@ namespace BerryIMU
 			switch (_gyrState.scale)
 			{
 			case G_SCALE_250dps:
-				return 8.75;
+				return 8.75;//invert
 			case G_SCALE_500dps:
-				return 17.50;
+				return 17.50;//invert
 			case G_SCALE_2000dps:
-				return 70.0;
+				return 0.07;
 			default:
 				throw (2);
 			}
@@ -603,9 +585,9 @@ namespace BerryIMU
 			return IMU::disableIMU();
 		}
 
-		bool read(double* output)
+		bool read(int16_t* output)
 		{
-			return IMU::read (OUT_X_L_M, output, false); 
+			return IMU::readRaw (OUT_X_L_M, output, false); 
 		}
 
 		void setDatarate(mag_odr datarate)
@@ -619,7 +601,7 @@ namespace BerryIMU
 			// And write the new register value back into CTRL_REG5_XM:
 			writeReg(MAG, CTRL_REG5_XM, value);
 		}
-		
+
 		bool configure(mag_odr datarate, mag_resolution mag_resolution = M_HIGH_RES, bool temperature = true, bool latch_interrupt_on_int1_src = 0, bool latch_interrupt_on_int2_src = 0)
 		{
 			// Configuration according to Tab. 83
@@ -696,14 +678,6 @@ namespace BerryIMU
 		bool selectDevice()
 		{
 			return IMU::selectDevice(m_i2c_file, MAG_ADDRESS);
-//			int addr;
-//			addr = MAG_ADDRESS;
-//			if (ioctl(m_i2c_file, I2C_SLAVE, addr) < 0)
-//			{
-//				setMessage("Failed to select I2C device.");
-//				return false;
-//			}
-//			return true;
 		}
 
 	};
@@ -901,7 +875,15 @@ namespace BerryIMU
 
 
 	private:
-		float m_last_temperature_reading = 0.;
+
+	static double getAltitude (float pressure)
+	{
+		// uses barometric formula to calculate altitude in [m] from [mBar]
+		// pressure at sea level 	const float airPressureAtSeaLevel = 1013.25;
+		return 44330. * (1 - pow (pressure / airPressureAtSeaLevel, 1. / 5.255)); 	// international barometric formula
+	}
+
+		float m_last_temperature_reading = 0.0;
 
 	};
 }

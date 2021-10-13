@@ -38,10 +38,10 @@ int main(int argc, char *argv[])
 			exit(0);
 		}
 
-		double accData[3];
-		double gyrData[3];
-		double magData[3];
-		long int seconds;
+//		double accData[3];
+//		double gyrData[3];
+//		double magData[3];
+//		long int seconds;
 		float xRot, yRot, zRot;
 
 		int iterations = 1000;
@@ -51,9 +51,10 @@ int main(int argc, char *argv[])
 //			gyr->read(gyrData);
 //			mag->read(magData);
 //			cout << "Acc:" << accData[0] << ":" << accData[1] << ":" << accData[2] << "\tMag:" <<  magData[0] << "\tGyr:" << gyrData[0]  << endl;
-			gyrData[0] = gyrData[1] = gyrData[0] = 0.0;
-			gyr->rotation(xRot, yRot, zRot, seconds, DEGPERSEC);
-			cout << "\tGyr:" << gyrData[0]  << ":" << gyrData[1] << ":" << gyrData[2] << endl;
+//			gyrData[0] = gyrData[1] = gyrData[2] = 0.0;
+			xRot = yRot = zRot = 0;
+			gyr->rotation(xRot, yRot, zRot, DEGPERSEC);
+			cout << "Gyr:" << xRot  << "\t" << yRot << "\t" << zRot << endl;
 		}
 
 		delete(acc);

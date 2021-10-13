@@ -108,12 +108,7 @@ namespace BerryIMU
 	const int TIME_LATENCY = 0x3C;
 	const int TIME_WINDOW = 0x3D;
 
-
-	static double getAltitude (float pressure)
-	{							       // uses barometric formula to calculate altitude in [m] from [mBar]
-		double p0 = 1013.25;				       // pressure at sea level
-		return 44330. * (1 - pow (pressure / p0, 1. / 5.255)); // international barometric formula
-	}
+	const float airPressureAtSeaLevel = 1013.25;
 
 	// ----------------------------------------------------
 	// The following constants are understood by the sensor
