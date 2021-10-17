@@ -269,19 +269,25 @@ namespace BerryIMU
 
 	// Should be redundant
 	enum sensor_type
-		{
-			ACC,
-			GYR,
-			MAG,
-			TP
-		};
+	{
+		ACC,
+		GYR,
+		MAG,
+		TP
+	};
 
 	enum rotation_units
-		{
-			RPM,
-			RADPERSEC,
-			DEGPERSEC
-		};
+	{
+		RPM,		// Revolutions per minute
+		RADPERSEC,	// Radians per second
+		DEGPERSEC	// Degrees per second
+	};
+
+	enum acceleration_units
+	{
+		MPSPS,		// meters per second per second
+		FTSPS		// feet per second per second
+	};
 
 
 	// DONT UNDERSTAND YET:

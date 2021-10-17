@@ -79,11 +79,11 @@ namespace BerryIMU
 		{
 		}
 
-//		~IMU()
-//		{
-//			if (isEnabled())
-//				disableIMU();
-//		}
+		virtual ~IMU()
+		{
+			if (isEnabled())
+				disableIMU();
+		}
 
 		public:
 		bool getSensorID (uint8_t &chip_id, uint8_t &version)
@@ -160,12 +160,12 @@ namespace BerryIMU
       private:
 
 		// Helper functions
-		void decoupleDataBlock (int16_t *a, uint8_t *block)
-		{
-			*a = (int16_t) (block[0] | block[1] << 8);
-			*(a + 1) = (int16_t) (block[2] | block[3] << 8);
-			*(a + 2) = (int16_t) (block[4] | block[5] << 8);
-		}
+//		void decoupleDataBlock (int16_t *a, uint8_t *block)
+//		{
+//			*a = (int16_t) (block[0] | block[1] << 8);
+//			*(a + 1) = (int16_t) (block[2] | block[3] << 8);
+//			*(a + 2) = (int16_t) (block[4] | block[5] << 8);
+//		}
 
 		bool readBlock (uint8_t command, uint8_t size, uint8_t *data)
 		{
@@ -178,32 +178,6 @@ namespace BerryIMU
 			return true;
 		}
 
-
-		inline int getWaitingTimeTemperature ()
-		{
-			// Waiting time in us for reading temperature values
-			return 4500; // time.sleep(0.0045) was in python
-		}
-
-		int getWaitingTimePressure (pressure_oversampling oversampling)
-		{
-			/*
-			 * Waiting times in us for reading pressure values
-			 */
-			const int extra_time = 0; // To check wether I dnt wait enough
-			switch (oversampling)
-				{
-					case 0:
-						return extra_time + 4500;
-					case 1:
-						return extra_time + 7500;
-					case 2:
-						return extra_time + 13500;
-					case 3:
-						return extra_time + 25500;
-				}
-			return -1;
-		}
 
 
 		// return two bytes from data as a signed 16-bit value
@@ -263,11 +237,6 @@ namespace BerryIMU
 			_accState.scale = A_SCALE_2g;
 			_accState.aa_bw = A_BANDWIDTH_50Hz;
 		}
-		~Acc()
-		{
-			if(IMU::isEnabled())
-				IMU::disableIMU();
-		}
 
 		bool enable()
 		{
@@ -278,7 +247,7 @@ namespace BerryIMU
 				configure(_accState.odr, _accState.bdu, _accState.enableX, _accState.enableY, _accState.enableZ);
 				return true;
 			}
-			return false;
+ 			return false;
 		}
 		bool disable()	{return IMU::disableIMU();}
 
@@ -287,6 +256,23 @@ namespace BerryIMU
 			return IMU::readRaw(OUT_X_L_A, output, false);
 		}
 
+		bool acceleration(float & xAcc, float & yAcc, float & zAcc, acceleration_units unit = MPSPS)
+		{
+			int16_t accData[3];
+			double _gain = gain();
+
+			if(IMU::readRaw(OUT_X_L_A, accData, false))
+			{
+				xAcc = (float)accData[0] * _gain;
+				yAcc = (float)accData[1] * _gain;
+				zAcc = (float)accData[2] * _gain;
+
+				return true;
+			}
+			return false;
+		}
+
+	protected:
 		void setDatarate(acc_odr datarate)
 		{ // see mag
 			_accState.odr = datarate;
@@ -295,6 +281,65 @@ namespace BerryIMU
 			value |= (datarate << 4);
 			writeReg(ACC, CTRL_REG1_XM, value);
 		}
+
+
+		void enableFIFO()
+		{
+			uint8_t c;
+			c = readReg(CTRL_REG0_XM);
+			writeReg(ACC, CTRL_REG0_XM, c | 0x40); // Enable gyro FIFO
+			msleep(20);				// Wait for change to take effect
+			writeReg(ACC, FIFO_CTRL_REG, 0x20 | 0x1F); // Enable gyro FIFO stream mode and set watermark at 32 samples
+			m_fifo_a = true;
+			// delay 1000 milliseconds to collect FIFO samples
+		}
+		void disableFIFO()
+		{
+			uint8_t c;
+			c = readReg(CTRL_REG0_XM);
+			writeReg(GYR, CTRL_REG0_XM, c & ~0x40); // Disable acc FIFO
+			msleep(20);
+			writeReg(GYR, FIFO_CTRL_REG, 0x00); // Enable acc bypass mode
+			m_fifo_a = false;
+		}
+
+		int pollFIFO()
+		{
+			uint8_t command;
+			if (!m_fifo_a)
+				return -1;
+			command = FIFO_SRC_REG;
+			// Read number of stored samples. They can be accessed using a for loop over read(...)
+			return (readReg(command) & 0x1F);
+		}
+
+
+		double gain()
+		{
+			// Possible gains
+			switch (_accState.scale)
+			{
+			case A_SCALE_2g:
+				return 0.061;
+			case A_SCALE_4g:
+				return 0.122;
+			case A_SCALE_6g:
+				return 0.183;
+			case A_SCALE_8g:
+				return 0.244;
+			case A_SCALE_16g:
+				return 0.732;
+			default:
+				throw (2);
+			}
+		}
+
+		bool selectDevice()
+		{
+			return IMU::selectDevice(m_i2c_file, ACC_ADDRESS);
+		}
+
+	private:
 		bool configure(acc_odr datarate, acc_bdu bdu = A_CONTINUOUS_UPDATE, bool enableX = true, bool enableY = true, bool enableZ = true)
 		{
 			// Configuration according to Tab. 71
@@ -334,62 +379,7 @@ namespace BerryIMU
 			return writeReg(ACC, CTRL_REG2_XM, value);
 		}
 
-		void enableFIFO()
-		{
-			uint8_t c;
-			c = readReg(CTRL_REG0_XM);
-			writeReg(ACC, CTRL_REG0_XM, c | 0x40); // Enable gyro FIFO
-			msleep(20);				// Wait for change to take effect
-			writeReg(ACC, FIFO_CTRL_REG, 0x20 | 0x1F); // Enable gyro FIFO stream mode and set watermark at 32 samples
-			m_fifo_a = true;
-			// delay 1000 milliseconds to collect FIFO samples
-		}
-		void disableFIFO()
-		{
-			uint8_t c;
-			c = readReg(CTRL_REG0_XM);
-			writeReg(GYR, CTRL_REG0_XM, c & ~0x40); // Disable acc FIFO
-			msleep(20);
-			writeReg(GYR, FIFO_CTRL_REG, 0x00); // Enable acc bypass mode
-			m_fifo_a = false;
-		}
-
-		int pollFIFO()
-		{
-			uint8_t command;
-			if (!m_fifo_a)
-				return -1;
-			command = FIFO_SRC_REG;
-			// Read number of stored samples. They can be accessed using a for loop over read(...)
-			return (readReg(command) & 0x1F);
-		}
-
 		AccState _accState;
-
-		double gain()
-		{
-			// Possible gains
-			switch (_accState.scale)
-			{
-			case A_SCALE_2g:
-				return 0.061;
-			case A_SCALE_4g:
-				return 0.122;
-			case A_SCALE_6g:
-				return 0.183;
-			case A_SCALE_8g:
-				return 0.244;
-			case A_SCALE_16g:
-				return 0.732;
-			default:
-				throw (2);
-			}
-		}
-
-		bool selectDevice()
-		{
-			return IMU::selectDevice(m_i2c_file, ACC_ADDRESS);
-		}
 
 	};
 
@@ -421,7 +411,7 @@ namespace BerryIMU
 
 		bool read(int16_t * output)
 		{
-			return IMU::readRaw(OUT_X_L_G, output, false); 
+			return IMU::readRaw(OUT_X_L_G, output, false);
 		}
 
 		bool rotation(float &xRate, float &yRate, float &zRate, rotation_units unit = DEGPERSEC)
@@ -442,6 +432,8 @@ namespace BerryIMU
 			return true;
 		}
 
+
+	protected:
 		void setDatarate(gyro_odr datarate)
 		{
 			_gyrState.odr = datarate;
@@ -451,6 +443,57 @@ namespace BerryIMU
 			writeReg(GYR, CTRL_REG1_G, value);
 		}
 
+		void enableFIFO()
+		{
+			uint8_t c;
+			c = readReg(CTRL_REG5_G);
+			writeReg(GYR, CTRL_REG5_G, c | 0x40); // Enable gyro FIFO
+			msleep(20);			       // Wait for change to take effect
+			writeReg(GYR, FIFO_CTRL_REG_G,
+				0x20 | 0x1F); // Enable gyro FIFO stream mode and set watermark at 32 samples
+			m_fifo_g = true;
+			// delay 1000 milliseconds to collect FIFO samples
+		}
+		void disableFIFO()
+		{
+			uint8_t c;
+			c = readReg(CTRL_REG5_G);
+			writeReg(GYR, CTRL_REG5_G, c & ~0x40); // Disable gyro FIFO
+			msleep(20);
+			writeReg(GYR, FIFO_CTRL_REG_G, 0x00); // Enable gyro bypass mode
+			m_fifo_g = false;
+		}
+
+		int pollFIFO()
+		{
+			uint8_t command;
+			if (!m_fifo_g)
+				return -1;
+			command = FIFO_SRC_REG_G;
+			return (readReg(command) & 0x1F);
+		}
+
+
+		double gain()
+		{
+			switch (_gyrState.scale)
+			{
+			case G_SCALE_250dps:
+				return 8.75;//invert
+			case G_SCALE_500dps:
+				return 17.50;//invert
+			case G_SCALE_2000dps:
+				return 0.07;
+			default:
+				throw (2);
+			}
+		}
+		bool selectDevice()
+		{
+			return IMU::selectDevice(m_i2c_file, GYR_ADDRESS);
+		}
+
+	private:
 		bool configure(gyro_odr odr, gyr_power_mode pd = G_POWER_NORMAL, bool enableX = true, bool enableY = true, bool enableZ = true)
 		{
 			// dr & bw set the data rate (ODR) and cutoff for low-pass filter (Cutoff)
@@ -505,56 +548,6 @@ namespace BerryIMU
 			// writeReg(GYR,CTRL_REG4_G, 0b0 0 11 0 00 0); // Continuos update, 2000 dps full scale
 		}
 
-		void enableFIFO()
-		{
-			uint8_t c;
-			c = readReg(CTRL_REG5_G);
-			writeReg(GYR, CTRL_REG5_G, c | 0x40); // Enable gyro FIFO
-			msleep(20);			       // Wait for change to take effect
-			writeReg(GYR, FIFO_CTRL_REG_G,
-				0x20 | 0x1F); // Enable gyro FIFO stream mode and set watermark at 32 samples
-			m_fifo_g = true;
-			// delay 1000 milliseconds to collect FIFO samples
-		}
-		void disableFIFO()
-		{
-			uint8_t c;
-			c = readReg(CTRL_REG5_G);
-			writeReg(GYR, CTRL_REG5_G, c & ~0x40); // Disable gyro FIFO
-			msleep(20);
-			writeReg(GYR, FIFO_CTRL_REG_G, 0x00); // Enable gyro bypass mode
-			m_fifo_g = false;
-		}
-
-		int pollFIFO()
-		{
-			uint8_t command;
-			if (!m_fifo_g)
-				return -1;
-			command = FIFO_SRC_REG_G;
-			return (readReg(command) & 0x1F);
-		}
-
-
-		double gain()
-		{
-			switch (_gyrState.scale)
-			{
-			case G_SCALE_250dps:
-				return 8.75;//invert
-			case G_SCALE_500dps:
-				return 17.50;//invert
-			case G_SCALE_2000dps:
-				return 0.07;
-			default:
-				throw (2);
-			}
-		}
-		bool selectDevice()
-		{
-			return IMU::selectDevice(m_i2c_file, GYR_ADDRESS);
-		}
-
 		GyrState _gyrState;
 		rotation_units unit = DEGPERSEC;
 		struct timespec lastReadingTime;
@@ -590,6 +583,8 @@ namespace BerryIMU
 			return IMU::readRaw (OUT_X_L_M, output, false); 
 		}
 
+	protected:
+
 		void setDatarate(mag_odr datarate)
 		{
 			_magState.odr = datarate;
@@ -601,6 +596,38 @@ namespace BerryIMU
 			// And write the new register value back into CTRL_REG5_XM:
 			writeReg(MAG, CTRL_REG5_XM, value);
 		}
+
+		void enableFIFO(){setMessage("No FIFO for Magnetometer available.");}
+		void disableFIFO(){setMessage("No FIFO for Magnetometer available.");}
+		int pollFIFO()
+		{
+			setMessage("Error: pollFIFO only defined for GYR and ACC");
+			return -1;
+		}
+
+
+		double gain()
+		{
+			switch (_magState.scale)
+			{
+			case M_SCALE_2Gs:
+				return 0.08;
+			case M_SCALE_4Gs:
+				return 0.16;
+			case M_SCALE_8Gs:
+				return 0.32;
+			case M_SCALE_12Gs:
+				return 0.48;
+			default:
+				throw (2);
+			}
+		}
+		bool selectDevice()
+		{
+			return IMU::selectDevice(m_i2c_file, MAG_ADDRESS);
+		}
+
+	private:
 
 		bool configure(mag_odr datarate, mag_resolution mag_resolution = M_HIGH_RES, bool temperature = true, bool latch_interrupt_on_int1_src = 0, bool latch_interrupt_on_int2_src = 0)
 		{
@@ -649,36 +676,9 @@ namespace BerryIMU
 			return writeReg(MAG, CTRL_REG7_XM, value);
 		}
 
-		void enableFIFO(){setMessage("No FIFO for Magnetometer available.");}
-		void disableFIFO(){setMessage("No FIFO for Magnetometer available.");}
-		int pollFIFO()
-		{
-			setMessage("Error: pollFIFO only defined for GYR and ACC");
-			return -1;
-		}
 
 		MagState _magState;
 
-		double gain()
-		{
-			switch (_magState.scale)
-			{
-			case M_SCALE_2Gs:
-				return 0.08;
-			case M_SCALE_4Gs:
-				return 0.16;
-			case M_SCALE_8Gs:
-				return 0.32;
-			case M_SCALE_12Gs:
-				return 0.48;
-			default:
-				throw (2);
-			}
-		}
-		bool selectDevice()
-		{
-			return IMU::selectDevice(m_i2c_file, MAG_ADDRESS);
-		}
 
 	};
 
@@ -871,6 +871,32 @@ namespace BerryIMU
 //				return false;
 //			}
 //			return true;
+		}
+
+		inline int getWaitingTimeTemperature ()
+		{
+			// Waiting time in us for reading temperature values
+			return 4500; // time.sleep(0.0045) was in python
+		}
+
+		int getWaitingTimePressure (pressure_oversampling oversampling)
+		{
+			/*
+			 * Waiting times in us for reading pressure values
+			 */
+			const int extra_time = 0; // To check wether I dnt wait enough
+			switch (oversampling)
+				{
+					case 0:
+						return extra_time + 4500;
+					case 1:
+						return extra_time + 7500;
+					case 2:
+						return extra_time + 13500;
+					case 3:
+						return extra_time + 25500;
+				}
+			return -1;
 		}
 
 

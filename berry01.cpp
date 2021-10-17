@@ -43,6 +43,7 @@ int main(int argc, char *argv[])
 //		double magData[3];
 //		long int seconds;
 		float xRot, yRot, zRot;
+		float xAcc, yAcc, zAcc;
 
 		int iterations = 1000;
 		while (iterations--)
@@ -54,7 +55,8 @@ int main(int argc, char *argv[])
 //			gyrData[0] = gyrData[1] = gyrData[2] = 0.0;
 			xRot = yRot = zRot = 0;
 			gyr->rotation(xRot, yRot, zRot, DEGPERSEC);
-			cout << "Gyr:" << xRot  << "\t" << yRot << "\t" << zRot << endl;
+			acc->acceleration(xAcc, yAcc, zAcc);
+			cout << "Gyr:" << xRot  << "\t" << yRot << "\t" << zRot << "\t\t" << xAcc << "\t" << yAcc << "\t" << zAcc << endl;
 		}
 
 		delete(acc);
