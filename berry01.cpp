@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
 		float xRot, yRot, zRot;
 		float xAcc, yAcc, zAcc;
 
-		int iterations = 1000;
+		int iterations = 50;
 		while (iterations--)
 		{
 //			acc->read(accData);
@@ -55,8 +55,14 @@ int main(int argc, char *argv[])
 //			gyrData[0] = gyrData[1] = gyrData[2] = 0.0;
 			xRot = yRot = zRot = 0;
 			gyr->rotation(xRot, yRot, zRot, DEGPERSEC);
-			acc->acceleration(xAcc, yAcc, zAcc);
-			cout << "Gyr:" << to_string(xRot) << "\t" <<  to_string(yRot) << "\t" <<  to_string(zRot) << "\t\t" <<  to_string(xAcc) << "\t" <<  to_string(yAcc) << "\t" <<  to_string(zAcc) << endl;
+			cout << "Gyr:" << to_string(xRot) << "\t" << to_string(yRot) << "\t" << to_string(zRot) << "\tDEG/sec\t";
+			gyr->rotation(xRot, yRot, zRot, RPM);
+			cout << to_string(xRot) << "\t" << to_string(yRot) << "\t" << to_string(zRot) << "\tRPM\t";
+			gyr->rotation(xRot, yRot, zRot, RADPERSEC);
+			cout << to_string(xRot) << "\t" << to_string(yRot) << "\t" << to_string(zRot) << "\tRAD/sec" << endl;
+
+//			acc->acceleration(xAcc, yAcc, zAcc);
+//			cout << "Gyr:" << to_string(xRot) << "\t" <<  to_string(yRot) << "\t" <<  to_string(zRot) << "\tRAD/sec\tAcc:" <<  to_string(xAcc) << "\t" <<  to_string(yAcc) << "\t" <<  to_string(zAcc) << endl;
 		}
 
 		delete(acc);

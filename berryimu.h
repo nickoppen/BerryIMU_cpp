@@ -416,8 +416,8 @@ namespace BerryIMU
 		{
 			int16_t rotData[6];			// 12 bytes
 
-			// 2000bps to Radians: 0.00122173
-			// 2000bps to RPM: 0.00019444
+			// 2000bps to Radians: 0.00122171
+			// 2000bps to RPM:  0.0116666
 			// 2000bps to degrees: 0.07
 			float rawConversionAt2000dps;
 			if (unit == DEGPERSEC)
@@ -428,12 +428,12 @@ namespace BerryIMU
 			{
 				if (unit == RADPERSEC)
 				{
-					rawConversionAt2000dps = 0.00122173;
+					rawConversionAt2000dps = 0.00122171;
 				}
 				else
 				{
 					if (unit == RPM)
-						rawConversionAt2000dps = 0.0001944;
+						rawConversionAt2000dps = 0.0116666;
 					else
 						throw (2);	// probably not 2
 				}
