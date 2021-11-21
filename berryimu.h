@@ -127,8 +127,6 @@ namespace BerryIMU
 			return ret;
 		}
 
-
-
 		// if reuse_device, do not call select device. useful since MAG_ADDRESS==ACC_ADDRESS
 		bool readRaw (const int registerOffset, int16_t *output, bool reuse_device = false)
 		{
@@ -201,7 +199,7 @@ namespace BerryIMU
 
 		void readReg (uint8_t command, uint8_t &data) { data = i2c_smbus_read_byte_data(m_i2c_file, command); }
 
-		bool writeReg (sensor_type type, uint8_t reg, uint8_t value)
+		bool writeReg (uint8_t reg, uint8_t value)
 		{
 			selectDevice();
 			if (-1 == i2c_smbus_write_byte_data(m_i2c_file, reg, value))
@@ -279,27 +277,27 @@ namespace BerryIMU
 			uint8_t value = readReg(CTRL_REG1_XM);
 			value &= 0xFF ^ (0xF << 4);
 			value |= (datarate << 4);
-			writeReg(ACC, CTRL_REG1_XM, value);
+			writeReg(CTRL_REG1_XM, value);
 		}
-
 
 		void enableFIFO()
 		{
 			uint8_t c;
 			c = readReg(CTRL_REG0_XM);
-			writeReg(ACC, CTRL_REG0_XM, c | 0x40); // Enable gyro FIFO
+			writeReg(CTRL_REG0_XM, c | 0x40); // Enable gyro FIFO
 			msleep(20);				// Wait for change to take effect
-			writeReg(ACC, FIFO_CTRL_REG, 0x20 | 0x1F); // Enable gyro FIFO stream mode and set watermark at 32 samples
+			writeReg(FIFO_CTRL_REG, 0x20 | 0x1F); // Enable gyro FIFO stream mode and set watermark at 32 samples
 			m_fifo_a = true;
 			// delay 1000 milliseconds to collect FIFO samples
 		}
+
 		void disableFIFO()
 		{
 			uint8_t c;
 			c = readReg(CTRL_REG0_XM);
-			writeReg(GYR, CTRL_REG0_XM, c & ~0x40); // Disable acc FIFO
+			writeReg(CTRL_REG0_XM, c & ~0x40); // Disable acc FIFO
 			msleep(20);
-			writeReg(GYR, FIFO_CTRL_REG, 0x00); // Enable acc bypass mode
+			writeReg(FIFO_CTRL_REG, 0x00); // Enable acc bypass mode
 			m_fifo_a = false;
 		}
 
@@ -358,7 +356,7 @@ namespace BerryIMU
 			value |= (0b1 & enableZ) << 2;
 			value |= (0b1 & bdu) << 3;
 			value |= (0b1111 & datarate) << 4;
-			return writeReg(ACC, CTRL_REG1_XM, value);
+			return writeReg(CTRL_REG1_XM, value);
 		}
 
 		bool configure(acc_scale scale, acc_aa_bandwidth anti_alias_bandwidth = A_BANDWIDTH_773Hz, acc_selftest_mode selftest = A_TEST_OFF, bool spi_interface_mode = 0)
@@ -376,7 +374,7 @@ namespace BerryIMU
 			value |= (0b111 & scale) << 3;
 			value |= (0b11 & anti_alias_bandwidth) << 6;
 
-			return writeReg(ACC, CTRL_REG2_XM, value);
+			return writeReg(CTRL_REG2_XM, value);
 		}
 
 		AccState _accState;
@@ -417,18 +415,36 @@ namespace BerryIMU
 		bool rotation(float &xRate, float &yRate, float &zRate, rotation_units unit = DEGPERSEC)
 		{
 			int16_t rotData[6];			// 12 bytes
-			const float rawToDegAt2000dps = 0.07;
 
-			struct timespec getTime_1;
+			// 2000bps to Radians: 0.00122173
+			// 2000bps to RPM: 0.00019444
+			// 2000bps to degrees: 0.07
+			float rawConversionAt2000dps;
+			if (unit == DEGPERSEC)
+			{
+				 rawConversionAt2000dps = 0.07;
+			}
+			else
+			{
+				if (unit == RADPERSEC)
+				{
+					rawConversionAt2000dps = 0.00122173;
+				}
+				else
+				{
+					if (unit == RPM)
+						rawConversionAt2000dps = 0.0001944;
+					else
+						throw (2);	// probably not 2
+				}
+			}
 
-			clock_gettime(CLOCK_REALTIME, &getTime_1);
+			clock_gettime(CLOCK_REALTIME, &lastReadingTime);	// Store the reading time to calculate the degrees turned on the next call
 			IMU::readRaw(OUT_X_L_G, rotData, false);
 
-			lastReadingTime =  getTime_1;		// Store the reading time to calculate the degrees turned on the next call
-
-			xRate = (float)rotData[0] * rawToDegAt2000dps;
-			yRate = (float)rotData[1] * rawToDegAt2000dps;
-			zRate = (float)rotData[2] * rawToDegAt2000dps;
+			xRate = (float)rotData[0] * rawConversionAt2000dps;
+			yRate = (float)rotData[1] * rawConversionAt2000dps;
+			zRate = (float)rotData[2] * rawConversionAt2000dps;
 			return true;
 		}
 
@@ -440,27 +456,28 @@ namespace BerryIMU
 			uint8_t value = readReg(CTRL_REG1_G);
 			value &= 0xFF ^ (0xF << 4);
 			value |= (datarate << 4);
-			writeReg(GYR, CTRL_REG1_G, value);
+			writeReg(CTRL_REG1_G, value);
 		}
 
 		void enableFIFO()
 		{
 			uint8_t c;
 			c = readReg(CTRL_REG5_G);
-			writeReg(GYR, CTRL_REG5_G, c | 0x40); // Enable gyro FIFO
+			writeReg(CTRL_REG5_G, c | 0x40); // Enable gyro FIFO
 			msleep(20);			       // Wait for change to take effect
-			writeReg(GYR, FIFO_CTRL_REG_G,
+			writeReg(FIFO_CTRL_REG_G,
 				0x20 | 0x1F); // Enable gyro FIFO stream mode and set watermark at 32 samples
 			m_fifo_g = true;
 			// delay 1000 milliseconds to collect FIFO samples
 		}
+
 		void disableFIFO()
 		{
 			uint8_t c;
 			c = readReg(CTRL_REG5_G);
-			writeReg(GYR, CTRL_REG5_G, c & ~0x40); // Disable gyro FIFO
+			writeReg(CTRL_REG5_G, c & ~0x40); // Disable gyro FIFO
 			msleep(20);
-			writeReg(GYR, FIFO_CTRL_REG_G, 0x00); // Enable gyro bypass mode
+			writeReg(FIFO_CTRL_REG_G, 0x00); // Enable gyro bypass mode
 			m_fifo_g = false;
 		}
 
@@ -472,7 +489,6 @@ namespace BerryIMU
 			command = FIFO_SRC_REG_G;
 			return (readReg(command) & 0x1F);
 		}
-
 
 		double gain()
 		{
@@ -488,6 +504,7 @@ namespace BerryIMU
 				throw (2);
 			}
 		}
+
 		bool selectDevice()
 		{
 			return IMU::selectDevice(m_i2c_file, GYR_ADDRESS);
@@ -514,7 +531,7 @@ namespace BerryIMU
 			value |= (0b1 & enableZ) << 2;
 			value |= (0b1 & pd) << 3;
 			value |= (0b1111 & odr) << 4;
-			return writeReg(GYR, CTRL_REG1_G, value);
+			return writeReg(CTRL_REG1_G, value);
 		}
 
 		bool configure(HighPassMode hpm, gyr_high_pass hpcf)
@@ -525,7 +542,7 @@ namespace BerryIMU
 			uint8_t value;
 			value = 0b1111 & hpcf;
 			value |= (0b11 & hpm) << 4;
-			return writeReg(GYR, CTRL_REG2_G, value);
+			return writeReg(CTRL_REG2_G, value);
 		}
 
 		bool configure(gyr_scale scale, gyr_bdu bdu = G_CONTINUOUS_UPDATE, bool bigEndian = false, gyr_selftest_mode selftest = G_TEST_OFF, bool spi_interface_mode = 0)
@@ -544,7 +561,7 @@ namespace BerryIMU
 			value |= (0b11 & scale) << (3 + 1); // 0bit at position 4
 			value |= (0b1 & bigEndian) << 6;
 			value |= (0b1 & bdu) << 7;
-			return writeReg(GYR, CTRL_REG4_G, value);
+			return writeReg(CTRL_REG4_G, value);
 			// writeReg(GYR,CTRL_REG4_G, 0b0 0 11 0 00 0); // Continuos update, 2000 dps full scale
 		}
 
@@ -594,7 +611,7 @@ namespace BerryIMU
 			// Then shift in our new ODR bits:
 			value |= (datarate << 2);
 			// And write the new register value back into CTRL_REG5_XM:
-			writeReg(MAG, CTRL_REG5_XM, value);
+			writeReg(CTRL_REG5_XM, value);
 		}
 
 		void enableFIFO(){setMessage("No FIFO for Magnetometer available.");}
@@ -643,8 +660,8 @@ namespace BerryIMU
 			value |= (0b111 & datarate) << 2;
 			value |= (0b11 & mag_resolution) << 5;
 			value |= (0b1 & temperature) << 7;
-			return writeReg(MAG, CTRL_REG5_XM, value);
-			// writeReg(MAG, CTRL_REG5_XM, 0b1 11 100 00);   // Temp enable, high res, Mag data rate = 50Hz
+			return writeReg(CTRL_REG5_XM, value);
+			// writeReg(CTRL_REG5_XM, 0b1 11 100 00);   // Temp enable, high res, Mag data rate = 50Hz
 		}
 
 		bool configure(mag_scale scale)
@@ -654,7 +671,7 @@ namespace BerryIMU
 			_magState.scale = scale;
 			uint8_t value;
 			value = (0b11 & scale) << 5;
-			return writeReg(MAG, CTRL_REG6_XM, value);
+			return writeReg(CTRL_REG6_XM, value);
 		}
 
 		bool configure(HighPassMode highpass, mag_filter_acceleration filter = M_FILTER_INTERNAL_BYPASSED,
@@ -673,7 +690,7 @@ namespace BerryIMU
 			value |= (0b1 & powermode) << 2;
 			value |= (0b1 & filter) << 5; // gap for 2 zero bits
 			value |= (0b11 & highpass) << 6;
-			return writeReg(MAG, CTRL_REG7_XM, value);
+			return writeReg(CTRL_REG7_XM, value);
 		}
 
 

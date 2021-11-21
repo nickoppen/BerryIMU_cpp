@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
 			xRot = yRot = zRot = 0;
 			gyr->rotation(xRot, yRot, zRot, DEGPERSEC);
 			acc->acceleration(xAcc, yAcc, zAcc);
-			cout << "Gyr:" << xRot  << "\t" << yRot << "\t" << zRot << "\t\t" << xAcc << "\t" << yAcc << "\t" << zAcc << endl;
+			cout << "Gyr:" << to_string(xRot) << "\t" <<  to_string(yRot) << "\t" <<  to_string(zRot) << "\t\t" <<  to_string(xAcc) << "\t" <<  to_string(yAcc) << "\t" <<  to_string(zAcc) << endl;
 		}
 
 		delete(acc);
