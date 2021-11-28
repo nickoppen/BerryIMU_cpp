@@ -418,22 +418,31 @@ namespace BerryIMU
 
 			// 2000bps to Radians: 0.00122171
 			// 2000bps to RPM:  0.0116666
-			// 2000bps to degrees: 0.07
-			float rawConversionAt2000dps;
+			// 2000bps to degrees: 0.07		/// according to the ozzmaker web site
+			// testing shows that the conversion is different for different axes
+			float rawConversionAt2000dps[3];
 			if (unit == DEGPERSEC)
 			{
-				 rawConversionAt2000dps = 0.07;
+				 rawConversionAt2000dps[0] = 0.07f;
+				 rawConversionAt2000dps[1] = 0.07f;
+				 rawConversionAt2000dps[2] = 0.07f;
 			}
 			else
 			{
 				if (unit == RADPERSEC)
 				{
-					rawConversionAt2000dps = 0.00122171;
+					rawConversionAt2000dps[0] = 0.00122171f;
+					rawConversionAt2000dps[1] = 0.00122171f;
+					rawConversionAt2000dps[2] = 0.00122171f;
 				}
 				else
 				{
 					if (unit == RPM)
-						rawConversionAt2000dps = 0.0116666;
+					{
+						rawConversionAt2000dps[0] = 0.0116666f;
+						rawConversionAt2000dps[1] = 0.0116666f;
+						rawConversionAt2000dps[2] = 0.0116666f;
+					}
 					else
 						throw (2);	// probably not 2
 				}
@@ -442,9 +451,9 @@ namespace BerryIMU
 			clock_gettime(CLOCK_REALTIME, &lastReadingTime);	// Store the reading time to calculate the degrees turned on the next call
 			IMU::readRaw(OUT_X_L_G, rotData, false);
 
-			xRate = (float)rotData[0] * rawConversionAt2000dps;
-			yRate = (float)rotData[1] * rawConversionAt2000dps;
-			zRate = (float)rotData[2] * rawConversionAt2000dps;
+			xRate = (float)rotData[0] * rawConversionAt2000dps[0];
+			yRate = (float)rotData[1] * rawConversionAt2000dps[1];
+			zRate = (float)rotData[2] * rawConversionAt2000dps[2];
 			return true;
 		}
 
