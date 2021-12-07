@@ -44,8 +44,9 @@ int main(int argc, char *argv[])
 //		long int seconds;
 		float xRot, yRot, zRot;
 //		float xAcc, yAcc, zAcc;
-		cout << endl << "xDeg" << "\t" << "yDeg" << "\t" << "zDeg" << "\t" << "xRPM" << "\t" << "yRPM" << "\t" << "zRPM" << "\t" << "xRad" << "\t" << "yRad" << "\t" << "zRad" << endl;
-		int iterations = 100;
+//		cout << endl << "xDeg" << "\t" << "yDeg" << "\t" << "zDeg" << "\t" << "xRPM" << "\t" << "yRPM" << "\t" << "zRPM" << "\t" << "xRad" << "\t" << "yRad" << "\t" << "zRad" << endl;
+		cout << endl << "xRaw" << "\t" << "yRaw" << "\t" << "zRaw" << endl;// << "\t" << "xRPM" << "\t" << "yRPM" << "\t" << "zRPM" << "\t" << "xRad" << "\t" << "yRad" << "\t" << "zRad" << endl;
+		int iterations = 300;
 		while (iterations--)
 		{
 //			acc->read(accData);
@@ -54,12 +55,14 @@ int main(int argc, char *argv[])
 //			cout << "Acc:" << accData[0] << ":" << accData[1] << ":" << accData[2] << "\tMag:" <<  magData[0] << "\tGyr:" << gyrData[0]  << endl;
 //			gyrData[0] = gyrData[1] = gyrData[2] = 0.0;
 			xRot = yRot = zRot = 0;
-			gyr->rotation(xRot, yRot, zRot, DEGPERSEC);
-			cout << to_string(xRot) << "\t" << to_string(yRot) << "\t" << to_string(zRot) << "\t";
-			gyr->rotation(xRot, yRot, zRot, RPM);
-			cout << to_string(xRot) << "\t" << to_string(yRot) << "\t" << to_string(zRot) << "\t";
-			gyr->rotation(xRot, yRot, zRot, RADPERSEC);
+			gyr->rawRotation(xRot, yRot, zRot);
 			cout << to_string(xRot) << "\t" << to_string(yRot) << "\t" << to_string(zRot) << endl;
+//			gyr->rotation(xRot, yRot, zRot, DEGPERSEC);
+//			cout << to_string(xRot) << "\t" << to_string(yRot) << "\t" << to_string(zRot) << "\t";
+//			gyr->rotation(xRot, yRot, zRot, RPM);
+//			cout << to_string(xRot) << "\t" << to_string(yRot) << "\t" << to_string(zRot) << "\t";
+//			gyr->rotation(xRot, yRot, zRot, RADPERSEC);
+//			cout << to_string(xRot) << "\t" << to_string(yRot) << "\t" << to_string(zRot) << endl;
 
 //			acc->acceleration(xAcc, yAcc, zAcc);
 //			cout << "Gyr:" << to_string(xRot) << "\t" <<  to_string(yRot) << "\t" <<  to_string(zRot) << "\tRAD/sec\tAcc:" <<  to_string(xAcc) << "\t" <<  to_string(yAcc) << "\t" <<  to_string(zAcc) << endl;

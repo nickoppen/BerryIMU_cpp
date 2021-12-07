@@ -421,11 +421,16 @@ namespace BerryIMU
 			// 2000bps to degrees: 0.07		/// according to the ozzmaker web site
 			// testing shows that the conversion is different for different axes
 			float rawConversionAt2000dps[3];
+			float biasAt2000dps[3];
+
 			if (unit == DEGPERSEC)
 			{
-				 rawConversionAt2000dps[0] = 0.07f;
-				 rawConversionAt2000dps[1] = 0.07f;
-				 rawConversionAt2000dps[2] = 0.07f;
+				 rawConversionAt2000dps[0] = 0.069065f;
+				 rawConversionAt2000dps[1] = 0.068585f;
+				 rawConversionAt2000dps[2] = 0.066168f;
+				 biasAt2000dps[0] = -11.406666f;
+				 biasAt2000dps[1] = -65.157500f;
+				 biasAt2000dps[2] = 84.860833f;
 			}
 			else
 			{
@@ -451,12 +456,22 @@ namespace BerryIMU
 			clock_gettime(CLOCK_REALTIME, &lastReadingTime);	// Store the reading time to calculate the degrees turned on the next call
 			IMU::readRaw(OUT_X_L_G, rotData, false);
 
-			xRate = (float)rotData[0] * rawConversionAt2000dps[0];
-			yRate = (float)rotData[1] * rawConversionAt2000dps[1];
-			zRate = (float)rotData[2] * rawConversionAt2000dps[2];
+			xRate = ((float)rotData[0] + biasAt2000dps[0]) * rawConversionAt2000dps[0];
+			yRate = ((float)rotData[1] + biasAt2000dps[1]) * rawConversionAt2000dps[1];
+			zRate = ((float)rotData[2] + biasAt2000dps[2]) * rawConversionAt2000dps[2];
 			return true;
 		}
 
+		bool rawRotation(float& xRawRate, float& yRawRate, float& zRawRate)
+		{
+			int16_t rotData[6];			// 12 bytes
+			IMU::readRaw(OUT_X_L_G, rotData, false);
+
+			xRawRate = (float)rotData[0];
+			yRawRate = (float)rotData[1];
+			zRawRate = (float)rotData[2];
+			return true;
+		}
 
 	protected:
 		void setDatarate(gyro_odr datarate)
