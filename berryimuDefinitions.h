@@ -285,6 +285,7 @@ namespace BerryIMU
 
 	enum acceleration_units
 	{
+		CMPSPS,		// centimeters per second per second
 		MPSPS,		// meters per second per second
 		FTSPS		// feet per second per second
 	};

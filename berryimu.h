@@ -270,6 +270,22 @@ namespace BerryIMU
 			return false;
 		}
 
+		bool rawAcceleration(float& xAcc, float& yAcc, float& zAcc)\
+		{
+			int16_t accData[3];
+
+			if (IMU::readRaw(OUT_X_L_A, accData, false))
+			{
+				xAcc = (float)accData[0];
+				yAcc = (float)accData[1];
+				zAcc = (float)accData[2];
+
+				return true;
+			}
+			return false;
+
+		}
+
 	protected:
 		void setDatarate(acc_odr datarate)
 		{ // see mag
@@ -416,10 +432,9 @@ namespace BerryIMU
 		{
 			int16_t rotData[6];			// 12 bytes
 
-			// 2000bps to Radians: 0.00122171
-			// 2000bps to RPM:  0.0116666
 			// 2000bps to degrees: 0.07		/// according to the ozzmaker web site
-			// testing shows that the conversion is different for different axes
+			// conversions used below are empirical using a turntable at 33 1/3 45 and 78 rpm
+			// biases are based on 1200 reading taken when gyro is stationary
 			float rawConversionAt2000dps[3];
 			float biasAt2000dps[3];
 
@@ -428,30 +443,32 @@ namespace BerryIMU
 				 rawConversionAt2000dps[0] = 0.069065f;
 				 rawConversionAt2000dps[1] = 0.068585f;
 				 rawConversionAt2000dps[2] = 0.066168f;
-				 biasAt2000dps[0] = -11.406666f;
-				 biasAt2000dps[1] = -65.157500f;
-				 biasAt2000dps[2] = 84.860833f;
 			}
 			else
 			{
 				if (unit == RADPERSEC)
 				{
-					rawConversionAt2000dps[0] = 0.00122171f;
-					rawConversionAt2000dps[1] = 0.00122171f;
-					rawConversionAt2000dps[2] = 0.00122171f;
+					rawConversionAt2000dps[0] = 0.00120525f;
+					rawConversionAt2000dps[1] = 0.001196952f;
+					rawConversionAt2000dps[2] = 0.00115482f;
 				}
 				else
 				{
 					if (unit == RPM)
 					{
-						rawConversionAt2000dps[0] = 0.0116666f;
-						rawConversionAt2000dps[1] = 0.0116666f;
-						rawConversionAt2000dps[2] = 0.0116666f;
+						rawConversionAt2000dps[0] = 0.0115094f;
+						rawConversionAt2000dps[1] = 0.0114299f;
+						rawConversionAt2000dps[2] = 0.0110277f;
 					}
 					else
 						throw (2);	// probably not 2
 				}
 			}
+
+			biasAt2000dps[0] = -11.406666f;
+			biasAt2000dps[1] = -65.157500f;
+			biasAt2000dps[2] = 84.860833f;
+
 
 			clock_gettime(CLOCK_REALTIME, &lastReadingTime);	// Store the reading time to calculate the degrees turned on the next call
 			IMU::readRaw(OUT_X_L_G, rotData, false);
