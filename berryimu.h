@@ -5,6 +5,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <string>
+#include <thread>
 
 //#include <time.h>
 #include <chrono> // Needed for waiting time required for ...
@@ -13,10 +14,10 @@
 #include <unistd.h> // for close
 extern "C"
 {
-#include <i2c/smbus.h>
-#include <linux/i2c-dev.h>
-#include <linux/i2c.h>
-#include <sys/ioctl.h>
+	#include <i2c/smbus.h>
+	#include <linux/i2c-dev.h>
+	#include <linux/i2c.h>
+	#include <sys/ioctl.h>
 }
 
 #ifdef __linux__
@@ -102,6 +103,10 @@ namespace BerryIMU
 
 		bool isEnabled () { return (m_i2c_file >= 0); }
 
+		const char* getLastMessage() { return m_message.c_str(); }
+
+
+
 		protected:
 		bool enableIMU ()
 		{
@@ -121,6 +126,8 @@ namespace BerryIMU
 
 		bool disableIMU ()
 		{
+			// TODO: add a power down to setting to stop the readings
+
 			bool ret = close(m_i2c_file);
 			if (ret)
 				m_i2c_file = -1;
@@ -138,11 +145,11 @@ namespace BerryIMU
 			is shown on page 61 of the datasheet. The values are expressed in 2’s complement (MSB for the sign and then 15 bits for the
 			value) so we need to combine; block[0] & block[1] for X axis block[2] & block[3] for Y axis block[4] & block[5] for Z axis
 			*/
-			int register_address = READ_MULTIPLE_BYTES_FLAG;
+			uint8_t register_address = READ_MULTIPLE_BYTES_FLAG;
 			uint8_t block[6];
 			if (!reuse_device)
 				selectDevice();
-			register_address |= registerOffset;
+			register_address |= (uint8_t)registerOffset;
 			if (readBlock(register_address, sizeof(block), block))
 			{
 				output[0] = (int16_t)(block[0] | block[1] << 8);
@@ -153,7 +160,6 @@ namespace BerryIMU
 			return false;
 		}
 
-		const char *getLastMessage () { return m_message.c_str(); }
 
       private:
 
@@ -176,8 +182,6 @@ namespace BerryIMU
 			return true;
 		}
 
-
-
 		// return two bytes from data as a signed 16-bit value
 		int16_t get_short(uint8_t* data, int index) { return ((data[index] << 8) + data[index + 1]); }
 		uint16_t get_ushort(uint8_t* data, int index) { return ((data[index] << 8) + data[index + 1]); }
@@ -186,6 +190,11 @@ namespace BerryIMU
 		virtual double gain() = 0;
 
 		virtual bool selectDevice() = 0;
+
+		bool fifoBufferRetrieve()
+		{
+			return false; 
+		}
 
 		bool selectDevice (int file, const int addr)
 		{
@@ -220,8 +229,10 @@ namespace BerryIMU
 
 		int m_i2c_file = -1;
 		std::string m_message;
-		bool m_fifo_g = false, m_fifo_a = false;
+		bool m_fifo_g = false;
 		configuration _configState;
+		//call back function (initialised to null)
+		int waitTime = 0;	// the amount of time the poll thread should wait before reading the fifo buffer
 
 	};
 
@@ -247,7 +258,13 @@ namespace BerryIMU
 			}
  			return false;
 		}
-		bool disable()	{return IMU::disableIMU();}
+		bool disable()	
+		{
+			if (m_fifo_a)
+				; // kill the polling thread and wait for it to end
+
+			return IMU::disableIMU();
+		}
 
 		bool read(int16_t * output)
 		{
@@ -270,7 +287,7 @@ namespace BerryIMU
 			return false;
 		}
 
-		bool rawAcceleration(float& xAcc, float& yAcc, float& zAcc)\
+		bool rawAcceleration(float& xAcc, float& yAcc, float& zAcc)
 		{
 			int16_t accData[3];
 
@@ -286,7 +303,13 @@ namespace BerryIMU
 
 		}
 
-	protected:
+		bool executeCallback(uint8_t* imuRawData, int valueCount)
+		{
+			// call the stored call back function
+			return m_fifo_a;
+		}
+
+
 		void setDatarate(acc_odr datarate)
 		{ // see mag
 			_accState.odr = datarate;
@@ -322,12 +345,111 @@ namespace BerryIMU
 			uint8_t command;
 			if (!m_fifo_a)
 				return -1;
+
+			// see page 62 of the data sheet
 			command = FIFO_SRC_REG;
 			// Read number of stored samples. They can be accessed using a for loop over read(...)
 			return (readReg(command) & 0x1F);
 		}
 
 
+		// fake the LSM9DS0's i2c data ready callback
+		// the user's call back function must have the form void func(uint8_t *, int)
+		bool callBackOnDataReady(bool (*func)(uint8_t *, int))
+		{
+			if (m_fifo_a)
+			{
+//				int waitTime; // now a IMU:: protected member
+				uint8_t c;
+
+				c = readReg(CTRL_REG4_XM);
+				writeReg(CTRL_REG4_XM, c & 0x08);
+				msleep(20);
+
+				// store the call back address and start the polling loop
+				//dataReadyCallBack = func;
+
+				switch (_accState.odr)
+				{
+				case A_POWER_DOWN: // Power-down mode (0x0)
+					return false;
+					break;
+				case A_ODR_3p125Hz:    // 3.125 Hz	(0x1)
+					waitTime = (int)(32 * 1000 / 3.125);		// 32 samples in the FIFO buffer and 1000 to convert to milliseconds
+					break;
+				case A_ODR_6p25Hz:     // 6.25 Hz (0x2)
+					waitTime = (int)(32 * 1000 / 6.25);
+					break;
+				case A_ODR_12p5Hz:     // 12.5 Hz (0x3)
+					waitTime = (int)(32 * 1000 / 12.5);
+					break;
+				case A_ODR_25Hz:       // 25 Hz (0x4)
+					waitTime = (int)(32 * 1000 / 25);
+					break;
+				case A_ODR_50Hz:       // 50 Hz (0x5)
+					waitTime = (int)(32 * 1000 / 50);
+					break;
+				case A_ODR_100Hz:      // 100 Hz (0x6)
+					waitTime = (int)(32 * 1000 / 100);
+					break;
+				case A_ODR_200Hz:      // 200 Hz (0x7)
+					waitTime = (int)(32 * 1000 / 200);
+					break;
+				case A_ODR_400Hz:      // 400 Hz (0x8)
+					waitTime = (int)(32 * 1000 / 400);
+					break;
+				case A_ODR_800Hz:      // 800 Hz (9)
+					waitTime = (int)(32 * 1000 / 800);
+					break;
+				case A_ODR_1600Hz:      // 1600 Hz (0xA)
+					waitTime = (int)(32 * 1000 / 1600);
+					break;
+				default:
+					return false;
+				}
+
+				std::thread pThread(pollThread, std::ref(*this));
+				return true;
+			}
+			else
+				return false;
+		}
+
+	private:
+		static 	void pollThread(Acc& device)
+		{
+			uint8_t accDataRaw[96];
+			int xyzValuesRead;
+			int waitTime;
+			bool continuePolling = true;
+
+			while (continuePolling)
+			{
+				//sleep for most of the time
+				std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
+				// read the acc buffer
+
+				// call back with a pointer to the data structure and the number of values it contains
+				continuePolling = device.executeCallback(accDataRaw, 32);	// testing - replace 32 with the actual number of values read
+			}
+		}
+
+
+		//static void pollTread(int * waitTime, void (*func)(uint8_t *, int))
+		//{
+		//	uint8_t accDataRaw[96];
+		//	int xyzValuesRead;
+		//	while (1)
+		//	{
+		//		//sleep for most of the time
+		//		std::this_thread::sleep_for(std::chrono::milliseconds(*waitTime));
+		//		// read the acc buffer
+		//		// call back with a pointer to the data structure and the number of values it contains
+		//		func(accDataRaw, 32);	// testing - replace 32 with the actual number of values read
+		//	}
+		//}
+
+		protected:
 		double gain()
 		{
 			// Possible gains
@@ -394,8 +516,9 @@ namespace BerryIMU
 		}
 
 		AccState _accState;
-
-	};
+		bool m_fifo_a;
+		//void* dataReadyCallBack = NULL;
+	};	// Class Acc
 
 	class Gyr : IMU
 	{
@@ -609,7 +732,8 @@ namespace BerryIMU
 		GyrState _gyrState;
 		rotation_units unit = DEGPERSEC;
 		struct timespec lastReadingTime;
-	};
+		bool m_fifo_g;
+	};	//Class Gyr
 
 	class Mag : IMU
 	{
@@ -738,7 +862,7 @@ namespace BerryIMU
 		MagState _magState;
 
 
-	};
+	};	// Class Mag
 
 	class TP : IMU
 	{
@@ -969,6 +1093,8 @@ namespace BerryIMU
 
 		float m_last_temperature_reading = 0.0;
 
-	};
-}
+	};	// Class TP
+
+
+} // namespace BerryIMU
 #endif // BERRYIMU_H

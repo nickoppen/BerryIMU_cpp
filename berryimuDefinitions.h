@@ -126,6 +126,8 @@ namespace BerryIMU
 		G_TEST_XPositiveYZNegative = 1,
 		G_TEST_XNegativeYZPositive = 3
 	}; // For gyr
+
+	// see: Table 75. Acceleration anti-alias filter bandwidth
 	enum acc_aa_bandwidth
 	{
 		A_BANDWIDTH_773Hz = 0,
@@ -141,7 +143,8 @@ namespace BerryIMU
 		A_SCALE_8g = 3,
 		A_SCALE_16g = 4
 	};
-	// accel_oder defines all possible output data rates of the accelerometer:
+
+	// acc_odr defines all possible output data rates of the accelerometer:
 	enum acc_odr
 	{
 		A_POWER_DOWN = 0, // Power-down mode (0x0)
