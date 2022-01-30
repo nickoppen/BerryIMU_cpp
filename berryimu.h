@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <string>
 #include <thread>
+#include <functional>
 
 //#include <time.h>
 #include <chrono> // Needed for waiting time required for ...
@@ -303,12 +304,6 @@ namespace BerryIMU
 
 		}
 
-		bool executeCallback(uint8_t* imuRawData, int valueCount)
-		{
-			// call the stored call back function
-			return m_fifo_a;
-		}
-
 
 		void setDatarate(acc_odr datarate)
 		{ // see mag
@@ -323,11 +318,10 @@ namespace BerryIMU
 		{
 			uint8_t c;
 			c = readReg(CTRL_REG0_XM);
-			writeReg(CTRL_REG0_XM, c | 0x40); // Enable gyro FIFO
+			writeReg(CTRL_REG0_XM, c | 0x40); // Enable acc FIFO
 			msleep(20);				// Wait for change to take effect
 			writeReg(FIFO_CTRL_REG, 0x20 | 0x1F); // Enable gyro FIFO stream mode and set watermark at 32 samples
 			m_fifo_a = true;
-			// delay 1000 milliseconds to collect FIFO samples
 		}
 
 		void disableFIFO()
@@ -338,7 +332,10 @@ namespace BerryIMU
 			msleep(20);
 			writeReg(FIFO_CTRL_REG, 0x00); // Enable acc bypass mode
 			m_fifo_a = false;
+			pollingThread->join();
 		}
+		
+		bool isFIFOEnabled() { return m_fifo_a; }
 
 		int pollFIFO()
 		{
@@ -355,7 +352,7 @@ namespace BerryIMU
 
 		// fake the LSM9DS0's i2c data ready callback
 		// the user's call back function must have the form void func(uint8_t *, int)
-		bool callBackOnDataReady(bool (*func)(uint8_t *, int))
+		bool initiateDataReadyWithCallback(std::function<bool(uint8_t *, int)> callBackFn)
 		{
 			if (m_fifo_a)
 			{
@@ -367,7 +364,7 @@ namespace BerryIMU
 				msleep(20);
 
 				// store the call back address and start the polling loop
-				//dataReadyCallBack = func;
+				dataReadyCallBack = std::bind(callBackFn, std::placeholders::_1, std::placeholders::_2);
 
 				switch (_accState.odr)
 				{
@@ -408,7 +405,7 @@ namespace BerryIMU
 					return false;
 				}
 
-				std::thread pThread(pollThread, std::ref(*this));
+				pollingThread = new std::thread(pollThread, std::ref(*this), waitTime);
 				return true;
 			}
 			else
@@ -416,24 +413,28 @@ namespace BerryIMU
 		}
 
 	private:
-		static 	void pollThread(Acc& device)
+		static 	void pollThread(Acc& device, int waitTime)
 		{
-			uint8_t accDataRaw[96];
-			int xyzValuesRead;
-			int waitTime;
 			bool continuePolling = true;
 
-			while (continuePolling)
+			while (continuePolling && device.isFIFOEnabled())	// continuePolling is the response from the call back; isFifoEnabled returns false after disableFifo has been called 
 			{
 				//sleep for most of the time
 				std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
-				// read the acc buffer
-
-				// call back with a pointer to the data structure and the number of values it contains
-				continuePolling = device.executeCallback(accDataRaw, 32);	// testing - replace 32 with the actual number of values read
+				continuePolling = device.readDataAndExecuteCallback();	// testing - replace 32 with the actual number of values read
 			}
 		}
 
+		bool readDataAndExecuteCallback()
+		{
+			uint8_t accDataRaw[96];		// 32 fifo buffer registers for each of x y and z
+			int xyzValuesRead;
+			for (uint8_t i; i < 96; i++)
+				accDataRaw[i] = i;
+
+			// call the stored call back function
+			return dataReadyCallBack(accDataRaw, 32);
+		}
 
 		//static void pollTread(int * waitTime, void (*func)(uint8_t *, int))
 		//{
@@ -517,7 +518,9 @@ namespace BerryIMU
 
 		AccState _accState;
 		bool m_fifo_a;
-		//void* dataReadyCallBack = NULL;
+		std::function<bool(uint8_t *, int)> dataReadyCallBack = NULL;
+		std::thread * pollingThread;
+
 	};	// Class Acc
 
 	class Gyr : IMU

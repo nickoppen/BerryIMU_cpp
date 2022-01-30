@@ -4,25 +4,31 @@
 using namespace BerryIMU;
 using namespace std;
 
-bool exitNowPlease;	// signal the call back to request that the polling loop close
-bool retrieveAccRaw(uint8_t* rawData, int n)
+bool continuePolling;	// signal the call back to request that the polling loop close
+bool retrieveAccRaw(uint8_t* rawData, int xyzValues)
 {
-	int i, xyzValues;
+	uint8_t i, j;
+	uint8_t data1, data2, data3;
 
-	xyzValues = n / 3;
-
+	cout << endl;
 	for (i = 0; i < xyzValues; i++)
-		cout << rawData[i] << " " << rawData[i + 1] << " " << rawData[i + 2] << endl;
+	{
+		j = i * 3;
+		data1 = rawData[j];
+		data2 = rawData[j+1];
+		data3 = rawData[j + 2];
+		cout << (unsigned int)i << ":" << (unsigned int)data1 << " " << (unsigned int)data2 << " " << (unsigned int)data3 << endl;
+	}
 
-	return exitNowPlease;
+	return continuePolling;
 }
 
 int main(int argc, char *argv[])
 {
 
 	Acc * acc;
-	Gyr * gyr;
-	Mag * mag;
+//	Gyr * gyr;
+//	Mag * mag;
 
 	try
 	{
@@ -36,12 +42,13 @@ int main(int argc, char *argv[])
 			cout << "Berry Acc failed to enable" << endl;
 			exit(0);
 		}
-		exitNowPlease = false;
+		continuePolling = true;
 		acc->enableFIFO();
 		acc->setDatarate(A_ODR_3p125Hz);
-		acc->callBackOnDataReady(retrieveAccRaw);
+		acc->initiateDataReadyWithCallback(retrieveAccRaw);
 		sleep(200);
-		exitNowPlease = true;
+		continuePolling = false;
+		acc->disableFIFO();
 
 		//status = gyr->enable();
 		//if (!status)
