@@ -76,7 +76,7 @@ namespace BerryIMU
 		// The following enums contain the bit flags which are used to set
 		// the mode in the device
 
-	      public:
+	public:
 		IMU ()
 		{
 		}
@@ -87,7 +87,7 @@ namespace BerryIMU
 				disableIMU();
 		}
 
-		public:
+	public:
 		bool getSensorID (uint8_t &chip_id, uint8_t &version)
 		{
 			uint8_t buffer[2];
@@ -105,8 +105,6 @@ namespace BerryIMU
 		bool isEnabled () { return (m_i2c_file >= 0); }
 
 		const char* getLastMessage() { return m_message.c_str(); }
-
-
 
 		protected:
 		bool enableIMU ()
@@ -163,15 +161,6 @@ namespace BerryIMU
 
 
       private:
-
-		// Helper functions
-//		void decoupleDataBlock (int16_t *a, uint8_t *block)
-//		{
-//			*a = (int16_t) (block[0] | block[1] << 8);
-//			*(a + 1) = (int16_t) (block[2] | block[3] << 8);
-//			*(a + 2) = (int16_t) (block[4] | block[5] << 8);
-//		}
-
 		bool readBlock (uint8_t command, uint8_t size, uint8_t *data)
 		{
 			int result = i2c_smbus_read_i2c_block_data(m_i2c_file, command, size, data);
@@ -188,14 +177,9 @@ namespace BerryIMU
 		uint16_t get_ushort(uint8_t* data, int index) { return ((data[index] << 8) + data[index + 1]); }
 
 	protected:
-		virtual double gain() = 0;
+		virtual float gain() = 0;
 
 		virtual bool selectDevice() = 0;
-
-		bool fifoBufferRetrieve()
-		{
-			return false; 
-		}
 
 		bool selectDevice (int file, const int addr)
 		{
@@ -230,18 +214,50 @@ namespace BerryIMU
 
 		int m_i2c_file = -1;
 		std::string m_message;
-		bool m_fifo_g = false;
 		configuration _configState;
 		//call back function (initialised to null)
-		int waitTime = 0;	// the amount of time the poll thread should wait before reading the fifo buffer
 
 	};
 
-	class Acc : IMU
+	class fifoDevice
+	{
+
+	public:
+		fifoDevice() {}
+
+		virtual void enableFIFO() = 0;
+		virtual void disableFIFO() = 0;
+		virtual int retrieveFIFOData() = 0;
+
+		bool isFIFOEnabled() { return usingFifo; }
+
+	protected:
+
+		bool readDataAndExecuteCallback()
+		{
+			int xyzValuesRead;
+			for (uint8_t i; i < 96; i++)
+				fifoData[i] = 0;
+
+			xyzValuesRead = this->retrieveFIFOData();
+
+			// call the stored call back function
+			return dataReadyCallBack(fifoData, xyzValuesRead);
+		}
+
+		std::function<bool(int16_t*, int)> dataReadyCallBack = NULL;
+		std::thread* pollingThread;
+
+		bool usingFifo = false;
+		int waitTime = 0;	// the amount of time the poll thread should wait before reading the fifo buffer
+		int16_t fifoData[92];
+	};
+
+	class Acc : public IMU, public fifoDevice
 	{
 	public:
 
-		Acc() : IMU()
+		Acc() : IMU(), fifoDevice()
 		{
 			_accState.odr = A_ODR_200Hz;
 			_accState.scale = A_SCALE_2g;
@@ -261,8 +277,8 @@ namespace BerryIMU
 		}
 		bool disable()	
 		{
-			if (m_fifo_a)
-				; // kill the polling thread and wait for it to end
+			if (usingFifo)
+				disableFIFO(); // kill the polling thread and wait for it to end
 
 			return IMU::disableIMU();
 		}
@@ -275,7 +291,7 @@ namespace BerryIMU
 		bool acceleration(float & xAcc, float & yAcc, float & zAcc, acceleration_units unit = MPSPS)
 		{
 			int16_t accData[3];
-			double _gain = gain();
+			float _gain = gain();
 
 			if(IMU::readRaw(OUT_X_L_A, accData, false))
 			{
@@ -314,14 +330,14 @@ namespace BerryIMU
 			writeReg(CTRL_REG1_XM, value);
 		}
 
-		void enableFIFO()
+		void enableFIFO()  // add fifo mode selection
 		{
 			uint8_t c;
 			c = readReg(CTRL_REG0_XM);
-			writeReg(CTRL_REG0_XM, c | 0x40); // Enable acc FIFO
-			msleep(20);				// Wait for change to take effect
-			writeReg(FIFO_CTRL_REG, 0x20 | 0x1F); // Enable gyro FIFO stream mode and set watermark at 32 samples
-			m_fifo_a = true;
+			writeReg(CTRL_REG0_XM, c | 0x40);		// Enable acc FIFO
+			msleep(20);								// Wait for change to take effect
+			writeReg(FIFO_CTRL_REG, 0x20 | 0x1F);	// Enable gyro FIFO mode (0x20) and set watermark at 32 samples (0x1F)
+			usingFifo = true;
 		}
 
 		void disableFIFO()
@@ -331,32 +347,17 @@ namespace BerryIMU
 			writeReg(CTRL_REG0_XM, c & ~0x40); // Disable acc FIFO
 			msleep(20);
 			writeReg(FIFO_CTRL_REG, 0x00); // Enable acc bypass mode
-			m_fifo_a = false;
+			usingFifo = false;
 			pollingThread->join();
 		}
 		
-		bool isFIFOEnabled() { return m_fifo_a; }
-
-		int pollFIFO()
-		{
-			uint8_t command;
-			if (!m_fifo_a)
-				return -1;
-
-			// see page 62 of the data sheet
-			command = FIFO_SRC_REG;
-			// Read number of stored samples. They can be accessed using a for loop over read(...)
-			return (readReg(command) & 0x1F);
-		}
-
 
 		// fake the LSM9DS0's i2c data ready callback
 		// the user's call back function must have the form void func(uint8_t *, int)
-		bool initiateDataReadyWithCallback(std::function<bool(uint8_t *, int)> callBackFn)
+		bool initiateDataReadyWithCallback(std::function<bool(int16_t *, int)> callBackFn)
 		{
-			if (m_fifo_a)
+			if (usingFifo)
 			{
-//				int waitTime; // now a IMU:: protected member
 				uint8_t c;
 
 				c = readReg(CTRL_REG4_XM);
@@ -425,47 +426,22 @@ namespace BerryIMU
 			}
 		}
 
-		bool readDataAndExecuteCallback()
-		{
-			uint8_t accDataRaw[96];		// 32 fifo buffer registers for each of x y and z
-			int xyzValuesRead;
-			for (uint8_t i; i < 96; i++)
-				accDataRaw[i] = i;
-
-			// call the stored call back function
-			return dataReadyCallBack(accDataRaw, 32);
-		}
-
-		//static void pollTread(int * waitTime, void (*func)(uint8_t *, int))
-		//{
-		//	uint8_t accDataRaw[96];
-		//	int xyzValuesRead;
-		//	while (1)
-		//	{
-		//		//sleep for most of the time
-		//		std::this_thread::sleep_for(std::chrono::milliseconds(*waitTime));
-		//		// read the acc buffer
-		//		// call back with a pointer to the data structure and the number of values it contains
-		//		func(accDataRaw, 32);	// testing - replace 32 with the actual number of values read
-		//	}
-		//}
-
-		protected:
-		double gain()
+	protected:
+		float gain()
 		{
 			// Possible gains
 			switch (_accState.scale)
 			{
 			case A_SCALE_2g:
-				return 0.061;
+				return 0.061f;
 			case A_SCALE_4g:
-				return 0.122;
+				return 0.122f;
 			case A_SCALE_6g:
-				return 0.183;
+				return 0.183f;
 			case A_SCALE_8g:
-				return 0.244;
+				return 0.244f;
 			case A_SCALE_16g:
-				return 0.732;
+				return 0.732f;
 			default:
 				throw (2);
 			}
@@ -475,6 +451,23 @@ namespace BerryIMU
 		{
 			return IMU::selectDevice(m_i2c_file, ACC_ADDRESS);
 		}
+
+		virtual int retrieveFIFOData()
+		{
+			int16_t accData[3];
+			uint8_t command = FIFO_SRC_REG;
+			// see page 62 of the data sheet
+			int numberOfValuesInFIFO = (int)(readReg(command) & 0x1F);
+			
+			for (int i = 0; i < numberOfValuesInFIFO; i++)
+			{
+				IMU::readRaw(OUT_X_L_A, &(fifoDevice::fifoData[i]), true);
+			}
+
+			// Read number of stored samples. They can be accessed using a for loop over read(...)
+			return (numberOfValuesInFIFO);
+		}
+
 
 	private:
 		bool configure(acc_odr datarate, acc_bdu bdu = A_CONTINUOUS_UPDATE, bool enableX = true, bool enableY = true, bool enableZ = true)
@@ -517,16 +510,13 @@ namespace BerryIMU
 		}
 
 		AccState _accState;
-		bool m_fifo_a;
-		std::function<bool(uint8_t *, int)> dataReadyCallBack = NULL;
-		std::thread * pollingThread;
 
 	};	// Class Acc
 
-	class Gyr : IMU
+	class Gyr : public IMU, public fifoDevice
 	{
 	public:
-		Gyr() : IMU()
+		Gyr() : IMU(), fifoDevice()
 		{
 			_gyrState.scale = G_SCALE_2000dps;
 			_gyrState.odr = G_ODR_190_BW_125;
@@ -626,16 +616,14 @@ namespace BerryIMU
 			writeReg(CTRL_REG1_G, value);
 		}
 
-		void enableFIFO()
+		void enableFIFO()		// Add fifo mode to include all modes (except ByPass which disables fifo)
 		{
 			uint8_t c;
 			c = readReg(CTRL_REG5_G);
-			writeReg(CTRL_REG5_G, c | 0x40); // Enable gyro FIFO
-			msleep(20);			       // Wait for change to take effect
-			writeReg(FIFO_CTRL_REG_G,
-				0x20 | 0x1F); // Enable gyro FIFO stream mode and set watermark at 32 samples
-			m_fifo_g = true;
-			// delay 1000 milliseconds to collect FIFO samples
+			writeReg(CTRL_REG5_G, c | 0x40);		// Enable gyro FIFO (see page 44 section 8.6)
+			msleep(20);								// Wait for change to take effect
+			writeReg(FIFO_CTRL_REG_G, 0x20 | 0x1F); // Enable gyro FIFO mode (0x20) and set watermark at 32 samples (0x1F)
+			usingFifo = true;
 		}
 
 		void disableFIFO()
@@ -645,28 +633,25 @@ namespace BerryIMU
 			writeReg(CTRL_REG5_G, c & ~0x40); // Disable gyro FIFO
 			msleep(20);
 			writeReg(FIFO_CTRL_REG_G, 0x00); // Enable gyro bypass mode
-			m_fifo_g = false;
+			usingFifo = false;
 		}
 
-		int pollFIFO()
+		virtual int retrieveFIFOData()
 		{
-			uint8_t command;
-			if (!m_fifo_g)
-				return -1;
-			command = FIFO_SRC_REG_G;
+			uint8_t command = FIFO_SRC_REG_G;
 			return (readReg(command) & 0x1F);
 		}
 
-		double gain()
+		float gain()
 		{
 			switch (_gyrState.scale)
 			{
 			case G_SCALE_250dps:
-				return 8.75;//invert
+				return 8.75f;//invert
 			case G_SCALE_500dps:
-				return 17.50;//invert
+				return 17.50f;//invert
 			case G_SCALE_2000dps:
-				return 0.07;
+				return 0.07f;
 			default:
 				throw (2);
 			}
@@ -735,7 +720,7 @@ namespace BerryIMU
 		GyrState _gyrState;
 		rotation_units unit = DEGPERSEC;
 		struct timespec lastReadingTime;
-		bool m_fifo_g;
+		bool usingFifo;
 	};	//Class Gyr
 
 	class Mag : IMU
@@ -782,31 +767,23 @@ namespace BerryIMU
 			writeReg(CTRL_REG5_XM, value);
 		}
 
-		void enableFIFO(){setMessage("No FIFO for Magnetometer available.");}
-		void disableFIFO(){setMessage("No FIFO for Magnetometer available.");}
-		int pollFIFO()
-		{
-			setMessage("Error: pollFIFO only defined for GYR and ACC");
-			return -1;
-		}
-
-
-		double gain()
+		float gain()
 		{
 			switch (_magState.scale)
 			{
 			case M_SCALE_2Gs:
-				return 0.08;
+				return 0.08f;
 			case M_SCALE_4Gs:
-				return 0.16;
+				return 0.16f;
 			case M_SCALE_8Gs:
-				return 0.32;
+				return 0.32f;
 			case M_SCALE_12Gs:
-				return 0.48;
+				return 0.48f;
 			default:
 				throw (2);
 			}
 		}
+
 		bool selectDevice()
 		{
 			return IMU::selectDevice(m_i2c_file, MAG_ADDRESS);
@@ -1043,7 +1020,7 @@ namespace BerryIMU
 			//}
 		}
 
-		double gain() { return -1.0; }
+		float gain() { return -1.0; }
 
 		bool selectDevice ()
 		{

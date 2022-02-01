@@ -5,7 +5,7 @@ using namespace BerryIMU;
 using namespace std;
 
 bool continuePolling;	// signal the call back to request that the polling loop close
-bool retrieveAccRaw(uint8_t* rawData, int xyzValues)
+bool retrieveAccRaw(int16_t* rawData, int xyzValues)
 {
 	uint8_t i, j;
 	uint8_t data1, data2, data3;
