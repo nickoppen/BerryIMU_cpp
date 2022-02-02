@@ -32,11 +32,11 @@ extern "C"
 /*  Usage:
  * *                    REPLACE include i2cdummy.h by the installed i2c protocol. Needs to implement
  *                          ioctl(int, int, int);
-			    i2c_smbus_read_i2c_block_data(int,int,int,uint8_t*);
-			    i2c_smbus_read_byte_data(int,int);
-			    i2c_smbus_write_byte_data(int , int , int );
+				i2c_smbus_read_i2c_block_data(int,int,int,uint8_t*);
+				i2c_smbus_read_byte_data(int,int);
+				i2c_smbus_write_byte_data(int , int , int );
 
-    This class provides the direct interaction with the IMU sensor.
+	This class provides the direct interaction with the IMU sensor.
 
  *  class BerryIMU:
  *  enableIMU() : activates i2c protocol and enables all sensors with the parameters set in
@@ -63,10 +63,10 @@ extern "C"
  *                  - CTRL_REG4_XM is used to set interrupt generators on INT2_XM
 			Bits (7-0): P2_TAP P2_INT1 P2_INT2 P2_INTM P2_DRDYA P2_DRDYM P2_Overrun P2_WTM
 			xmWriteByte(CTRL_REG4_XM, 0x04); // Magnetometer data ready on INT2_XM (0x08)
-		    - use https://github.com/sparkfun/SparkFun_LSM9DS0_Arduino_Library/blob/master/src/SFE_LSM9DS0.cpp
+			- use https://github.com/sparkfun/SparkFun_LSM9DS0_Arduino_Library/blob/master/src/SFE_LSM9DS0.cpp
 
-		      =>FIFO usage:
-		      ==>https://www.raspberrypi.org/forums/viewtopic.php?t=111710&p=766487
+			  =>FIFO usage:
+			  ==>https://www.raspberrypi.org/forums/viewtopic.php?t=111710&p=766487
  * */
 namespace BerryIMU
 {
@@ -160,7 +160,7 @@ namespace BerryIMU
 		}
 
 
-      private:
+	  private:
 		bool readBlock (uint8_t command, uint8_t size, uint8_t *data)
 		{
 			int result = i2c_smbus_read_i2c_block_data(m_i2c_file, command, size, data);
@@ -228,6 +228,7 @@ namespace BerryIMU
 		virtual void enableFIFO() = 0;
 		virtual void disableFIFO() = 0;
 		virtual int retrieveFIFOData() = 0;
+		virtual bool initiateDataReadyWithCallback(std::function<bool(int16_t*, int)> callBackFn) = 0;
 
 		bool isFIFOEnabled() { return usingFifo; }
 
@@ -251,6 +252,20 @@ namespace BerryIMU
 		bool usingFifo = false;
 		int waitTime = 0;	// the amount of time the poll thread should wait before reading the fifo buffer
 		int16_t fifoData[92];
+
+		static 	void pollThread(fifoDevice & device, int waitTime)
+		{
+			bool continuePolling = true;
+
+			while (continuePolling && device.isFIFOEnabled())	// continuePolling is the response from the call back; isFifoEnabled returns false after disableFifo has been called 
+			{
+				//sleep for most of the time
+				std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
+				continuePolling = device.readDataAndExecuteCallback();	// testing - replace 32 with the actual number of values read
+			}
+		}
+
+
 	};
 
 	class Acc : public IMU, public fifoDevice
@@ -273,7 +288,7 @@ namespace BerryIMU
 				configure(_accState.odr, _accState.bdu, _accState.enableX, _accState.enableY, _accState.enableZ);
 				return true;
 			}
- 			return false;
+			return false;
 		}
 		bool disable()	
 		{
@@ -354,7 +369,7 @@ namespace BerryIMU
 
 		// fake the LSM9DS0's i2c data ready callback
 		// the user's call back function must have the form void func(uint8_t *, int)
-		bool initiateDataReadyWithCallback(std::function<bool(int16_t *, int)> callBackFn)
+		virtual bool initiateDataReadyWithCallback(std::function<bool(int16_t *, int)> callBackFn)
 		{
 			if (usingFifo)
 			{
@@ -413,19 +428,6 @@ namespace BerryIMU
 				return false;
 		}
 
-	private:
-		static 	void pollThread(Acc& device, int waitTime)
-		{
-			bool continuePolling = true;
-
-			while (continuePolling && device.isFIFOEnabled())	// continuePolling is the response from the call back; isFifoEnabled returns false after disableFifo has been called 
-			{
-				//sleep for most of the time
-				std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
-				continuePolling = device.readDataAndExecuteCallback();	// testing - replace 32 with the actual number of values read
-			}
-		}
-
 	protected:
 		float gain()
 		{
@@ -454,7 +456,6 @@ namespace BerryIMU
 
 		virtual int retrieveFIFOData()
 		{
-			int16_t accData[3];
 			uint8_t command = FIFO_SRC_REG;
 			// see page 62 of the data sheet
 			int numberOfValuesInFIFO = (int)(readReg(command) & 0x1F);
@@ -636,6 +637,61 @@ namespace BerryIMU
 			usingFifo = false;
 		}
 
+		// fake the LSM9DS0's i2c data ready callback
+		// the user's call back function must have the form void func(uint8_t *, int)
+		virtual bool initiateDataReadyWithCallback(std::function<bool(int16_t*, int)> callBackFn)
+		{
+			if (usingFifo)
+			{
+				uint8_t c;
+
+				c = readReg(CTRL_REG4_XM);
+				writeReg(CTRL_REG4_XM, c & 0x08);
+				msleep(20);
+
+				// store the call back address and start the polling loop
+				dataReadyCallBack = std::bind(callBackFn, std::placeholders::_1, std::placeholders::_2);
+
+				switch (_gyrState.odr)
+				{								// value		ODR (Hz)	cutoff
+				case G_ODR_95_BW_125:			// = 0x0,	//   95         12.5
+					break;
+				case G_ODR_95_BW_25:			// = 0x1,	//   95          25								// 0x2 and 0x3 define the same data rate and bandwidth as 0x1
+					break;
+				case G_ODR_190_BW_125:			// = 0x4,	//   190        12.5
+					break;
+				case G_ODR_190_BW_25:			// = 0x5,	//   190         25
+					break;
+				case G_ODR_190_BW_50:			// = 0x6,	//   190         50
+					break;
+				case G_ODR_190_BW_70:			// = 0x7,	//   190         70
+					break;
+				case G_ODR_380_BW_20:			// = 0x8,	//   380         20
+					break;
+				case G_ODR_380_BW_25:			// = 0x9,	//   380         25
+					break;
+				case G_ODR_380_BW_50:			// = 0xA,	//   380         50
+					break;
+				case G_ODR_380_BW_100:			// = 0xB,	//   380         100
+					break;
+				case G_ODR_760_BW_30:			// = 0xC,	//   760         30
+					break;
+				case G_ODR_760_BW_35:			// = 0xD,	//   760         35
+					break;
+				case G_ODR_760_BW_50:			// = 0xE,	//   760         50
+					break;
+				case G_ODR_760_BW_100:			// = 0xF,	//   760         100
+					break;
+				default:
+					return false;
+				}
+
+				pollingThread = new std::thread(pollThread, std::ref(*this), waitTime);
+				return true;
+			}
+			else
+				return false;
+		}
 		virtual int retrieveFIFOData()
 		{
 			uint8_t command = FIFO_SRC_REG_G;

@@ -10,7 +10,7 @@ bool retrieveAccRaw(int16_t* rawData, int xyzValues)
 	uint8_t i, j;
 	uint8_t data1, data2, data3;
 
-	cout << endl;
+	cout << endl << "Got data:" << endl;
 	for (i = 0; i < xyzValues; i++)
 	{
 		j = i * 3;

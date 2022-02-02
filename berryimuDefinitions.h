@@ -207,11 +207,12 @@ namespace BerryIMU
 		G_SCALE_2000dps = 3
 	};
 
+	// See Section 8.2
 	enum gyro_odr		       // 4 bit
 	{			       // ODR (Hz) --- Cutoff
 		G_ODR_95_BW_125 = 0x0, //   95         12.5
 		G_ODR_95_BW_25 = 0x1,  //   95          25
-				      // 0x2 and 0x3 define the same data rate and bandwidth
+				      // 0x2 and 0x3 define the same data rate and bandwidth as 0x1
 		G_ODR_190_BW_125 = 0x4, //   190        12.5
 		G_ODR_190_BW_25 = 0x5,  //   190         25
 		G_ODR_190_BW_50 = 0x6,  //   190         50
