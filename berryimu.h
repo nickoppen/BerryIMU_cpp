@@ -270,14 +270,36 @@ namespace BerryIMU
 
 	class Acc : public IMU, public fifoDevice
 	{
-	public:
 
+	private:
+		/// <summary>
+		/// Private constructor to ensure that there is only one instance
+		/// </summary>
 		Acc() : IMU(), fifoDevice()
 		{
 			_accState.odr = A_ODR_200Hz;
 			_accState.scale = A_SCALE_2g;
 			_accState.aa_bw = A_BANDWIDTH_50Hz;
 		}
+
+	public:
+		/// <summary>
+		///  Return a reference to the singleton instance
+		/// </summary>
+		/// <returns></returns>
+		static Acc& Get_Instance()
+		{
+			static Acc acc_instance;
+			return acc_instance;
+		}
+
+		/// <summary>
+		/// Ensure no copy constructors
+		/// </summary>
+		/// <param name=""></param>
+		/// <returns></returns>
+		Acc operator=(Acc&) = delete;
+		Acc(const Acc&) = delete;
 
 		bool enable()
 		{
@@ -516,13 +538,43 @@ namespace BerryIMU
 
 	class Gyr : public IMU, public fifoDevice
 	{
-	public:
+
+	/// <summary>
+	/// Private contructor for a Singleton class
+	/// </summary>
+	private:
 		Gyr() : IMU(), fifoDevice()
 		{
 			_gyrState.scale = G_SCALE_2000dps;
 			_gyrState.odr = G_ODR_190_BW_125;
 			_gyrState.highpasscutoff = G_HIGH_MAX;
 		}
+
+	public:
+		/// <summary>
+		/// Provides access to the single static instance of Gyr
+		/// </summary>
+		/// <returns></returns>
+		static Gyr& Get_Instance()
+		{
+			static Gyr instance_gyr;
+			return instance_gyr;
+		}
+
+		/// <summary>
+		/// Enforces use of a reference disallowing copy constructors
+		/// </summary>
+		/// <param name=""></param>
+		/// <returns></returns>
+		Gyr operator=(Gyr&) = delete;
+		Gyr(const Gyr&) = delete;
+
+		/// End Singleton 
+
+		/// <summary>
+		/// 
+		/// </summary>
+		/// <returns></returns>
 		bool enable()
 		{
 			if (IMU::enableIMU())
@@ -653,34 +705,28 @@ namespace BerryIMU
 				dataReadyCallBack = std::bind(callBackFn, std::placeholders::_1, std::placeholders::_2);
 
 				switch (_gyrState.odr)
-				{								// value		ODR (Hz)	cutoff
+				{								// value		ODR (Hz)	cutoff for filter
 				case G_ODR_95_BW_125:			// = 0x0,	//   95         12.5
-					break;
 				case G_ODR_95_BW_25:			// = 0x1,	//   95          25								// 0x2 and 0x3 define the same data rate and bandwidth as 0x1
+					waitTime = (int)(32 * 1000 / 95);
 					break;
 				case G_ODR_190_BW_125:			// = 0x4,	//   190        12.5
-					break;
 				case G_ODR_190_BW_25:			// = 0x5,	//   190         25
-					break;
 				case G_ODR_190_BW_50:			// = 0x6,	//   190         50
-					break;
 				case G_ODR_190_BW_70:			// = 0x7,	//   190         70
+					waitTime = (int)(32 * 1000 / 190);
 					break;
 				case G_ODR_380_BW_20:			// = 0x8,	//   380         20
-					break;
 				case G_ODR_380_BW_25:			// = 0x9,	//   380         25
-					break;
 				case G_ODR_380_BW_50:			// = 0xA,	//   380         50
-					break;
 				case G_ODR_380_BW_100:			// = 0xB,	//   380         100
+					waitTime = (int)(32 * 1000 / 380);
 					break;
 				case G_ODR_760_BW_30:			// = 0xC,	//   760         30
-					break;
 				case G_ODR_760_BW_35:			// = 0xD,	//   760         35
-					break;
 				case G_ODR_760_BW_50:			// = 0xE,	//   760         50
-					break;
 				case G_ODR_760_BW_100:			// = 0xF,	//   760         100
+					waitTime = (int)(32 * 1000 / 760);
 					break;
 				default:
 					return false;
@@ -1134,3 +1180,4 @@ namespace BerryIMU
 
 } // namespace BerryIMU
 #endif // BERRYIMU_H
+

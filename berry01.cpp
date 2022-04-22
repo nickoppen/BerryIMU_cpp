@@ -26,31 +26,29 @@ bool retrieveAccRaw(int16_t* rawData, int xyzValues)
 int main(int argc, char *argv[])
 {
 
-	Acc * acc;
-//	Gyr * gyr;
+	Acc & acc = Acc::Get_Instance();
+	Gyr & gyr = Gyr::Get_Instance();
 //	Mag * mag;
 
 	try
 	{
-		acc = new Acc();
-//		gyr = new Gyr();
 //		mag = new Mag();
 
-		bool status = acc->enable();
+		bool status = acc.enable();
 		if (!status)
 		{
 			cout << "Berry Acc failed to enable" << endl;
 			exit(0);
 		}
 		continuePolling = true;
-		acc->enableFIFO();
-		acc->setDatarate(A_ODR_3p125Hz);
-		acc->initiateDataReadyWithCallback(retrieveAccRaw);
+		acc.enableFIFO();
+		acc.setDatarate(A_ODR_3p125Hz);
+		acc.initiateDataReadyWithCallback(retrieveAccRaw);
 		sleep(200);
 		continuePolling = false;
-		acc->disableFIFO();
+		acc.disableFIFO();
 
-		//status = gyr->enable();
+		//status = gyr.enable();
 		//if (!status)
 		//{
 		//	cout << "Berry Gyr failed to enable" << endl;
@@ -99,8 +97,6 @@ int main(int argc, char *argv[])
 
 		//}
 
-		delete(acc);
-//		delete(gyr);
 //		delete(mag);
 	}
 	catch (int e)
