@@ -299,7 +299,7 @@ namespace BerryIMU
 	enum HighPassMode
 	{
 		NormalResetting = 0,
-		ReferenceSignalForFiltering,
+		ReferenceSignalForFiltering = 1,	// was missing 
 		Normal = 2,
 		AutoResetOnInterrupt = 3
 	};

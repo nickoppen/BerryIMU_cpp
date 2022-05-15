@@ -10,7 +10,7 @@ bool retrieveAccRaw(int16_t* rawData, int xyzValues)
 	uint8_t i, j;
 	uint8_t data1, data2, data3;
 
-	cout << endl << "Got data:" << endl;
+	cout << endl << "Got data: " << xyzValues << endl;
 	for (i = 0; i < xyzValues; i++)
 	{
 		j = i * 3;
@@ -26,34 +26,42 @@ bool retrieveAccRaw(int16_t* rawData, int xyzValues)
 int main(int argc, char *argv[])
 {
 
-	Acc & acc = Acc::Get_Instance();
+//	Acc & acc = Acc::Get_Instance();
 	Gyr & gyr = Gyr::Get_Instance();
-//	Mag * mag;
+//	Mag & mag = Mag::Get_Instance();
+
+	bool status;
 
 	try
 	{
-//		mag = new Mag();
 
-		bool status = acc.enable();
+		// status = acc.enable();
+		//if (!status)
+		//{
+		//	cout << "Berry Acc failed to enable" << endl;
+		//	exit(0);
+		//}
+		//continuePolling = true;
+		//acc.enableFIFO();
+		//acc.setDatarate(A_ODR_3p125Hz);
+		//acc.initiateDataReadyWithCallback(retrieveAccRaw);
+		//sleep(200);
+		//continuePolling = false;
+		//acc.disableFIFO();
+
+		status = gyr.enable();
 		if (!status)
 		{
-			cout << "Berry Acc failed to enable" << endl;
+			cout << "Berry Gyr failed to enable" << endl;
 			exit(0);
 		}
 		continuePolling = true;
-		acc.enableFIFO();
-		acc.setDatarate(A_ODR_3p125Hz);
-		acc.initiateDataReadyWithCallback(retrieveAccRaw);
+		gyr.enableFIFO();
+		gyr.setDatarate(G_ODR_95_BW_125);
+		gyr.initiateDataReadyWithCallback(retrieveAccRaw);
 		sleep(200);
 		continuePolling = false;
-		acc.disableFIFO();
-
-		//status = gyr.enable();
-		//if (!status)
-		//{
-		//	cout << "Berry Gyr failed to enable" << endl;
-		//	exit(0);
-		//}
+		gyr.disableFIFO();
 
 		//status = mag->enable();
 		//if (!status)
@@ -97,7 +105,6 @@ int main(int argc, char *argv[])
 
 		//}
 
-//		delete(mag);
 	}
 	catch (int e)
 	{

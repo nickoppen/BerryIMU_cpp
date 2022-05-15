@@ -145,7 +145,7 @@ namespace BerryIMU
 			value) so we need to combine; block[0] & block[1] for X axis block[2] & block[3] for Y axis block[4] & block[5] for Z axis
 			*/
 			uint8_t register_address = READ_MULTIPLE_BYTES_FLAG;
-			uint8_t block[6];
+			uint8_t block[6] = {0, 0, 0, 0, 0, 0};
 			if (!reuse_device)
 				selectDevice();
 			register_address |= (uint8_t)registerOffset;
@@ -177,11 +177,9 @@ namespace BerryIMU
 		uint16_t get_ushort(uint8_t* data, int index) { return ((data[index] << 8) + data[index + 1]); }
 
 	protected:
-		virtual float gain() = 0;
-
-		virtual bool selectDevice() = 0;
-
-		bool selectDevice (int file, const int addr)
+		virtual float	gain() = 0;
+		virtual bool	selectDevice() = 0;
+		bool			selectDevice (int file, const int addr)
 		{
 			if (ioctl(file, I2C_SLAVE, addr) < 0)
 			{
@@ -190,10 +188,9 @@ namespace BerryIMU
 			}
 			return true;
 		}
-
-		void readReg (uint8_t command, uint8_t &data) { data = i2c_smbus_read_byte_data(m_i2c_file, command); }
-
-		bool writeReg (uint8_t reg, uint8_t value)
+		void			readReg (uint8_t command, uint8_t &data) { data = i2c_smbus_read_byte_data(m_i2c_file, command); }
+		uint8_t			readReg(uint8_t command) { return i2c_smbus_read_byte_data(m_i2c_file, command); }
+		bool			writeReg (uint8_t reg, uint8_t value)
 		{
 			selectDevice();
 			if (-1 == i2c_smbus_write_byte_data(m_i2c_file, reg, value))
@@ -203,14 +200,15 @@ namespace BerryIMU
 			}
 			return true;
 		}
-
-		uint8_t readReg (uint8_t command) { return i2c_smbus_read_byte_data(m_i2c_file, command); }
-
-		void setMessage (std::string msg) { m_message = msg; }
-
-		void usleep (int microseconds) { std::this_thread::sleep_for (std::chrono::microseconds (microseconds)); }
-		void msleep (int milliseconds) { usleep (1000 * milliseconds); }
-
+		uint8_t			writeBitPatternToReg(uint8_t reg, uint8_t bitPattern)
+		{
+			uint8_t c = readReg(reg);
+			writeReg(reg, c | bitPattern);
+			return readReg(reg);
+		}
+		void			setMessage (std::string msg) { m_message = msg; }
+		void			usleep (int microseconds) { std::this_thread::sleep_for (std::chrono::microseconds (microseconds)); }
+		void			msleep (int milliseconds) { usleep (1000 * milliseconds); }
 
 		int m_i2c_file = -1;
 		std::string m_message;
@@ -246,13 +244,6 @@ namespace BerryIMU
 			return dataReadyCallBack(fifoData, xyzValuesRead);
 		}
 
-		std::function<bool(int16_t*, int)> dataReadyCallBack = NULL;
-		std::thread* pollingThread;
-
-		bool usingFifo = false;
-		int waitTime = 0;	// the amount of time the poll thread should wait before reading the fifo buffer
-		int16_t fifoData[92];
-
 		static 	void pollThread(fifoDevice & device, int waitTime)
 		{
 			bool continuePolling = true;
@@ -265,7 +256,12 @@ namespace BerryIMU
 			}
 		}
 
+		bool usingFifo = false;
+		int waitTime = 0;	// the amount of time the poll thread should wait before reading the fifo buffer
+		int16_t fifoData[92];
 
+		std::function<bool(int16_t*, int)> dataReadyCallBack = NULL;
+		std::thread* pollingThread;
 	};
 
 	class Acc : public IMU, public fifoDevice
@@ -298,7 +294,7 @@ namespace BerryIMU
 		/// </summary>
 		/// <param name=""></param>
 		/// <returns></returns>
-		Acc operator=(Acc&) = delete;
+		Acc operator=(const Acc&) = delete;
 		Acc(const Acc&) = delete;
 
 		bool enable()
@@ -324,7 +320,6 @@ namespace BerryIMU
 		{
 			return IMU::readRaw(OUT_X_L_A, output, false);
 		}
-
 		bool acceleration(float & xAcc, float & yAcc, float & zAcc, acceleration_units unit = MPSPS)
 		{
 			int16_t accData[3];
@@ -340,7 +335,6 @@ namespace BerryIMU
 			}
 			return false;
 		}
-
 		bool rawAcceleration(float& xAcc, float& yAcc, float& zAcc)
 		{
 			int16_t accData[3];
@@ -357,7 +351,6 @@ namespace BerryIMU
 
 		}
 
-
 		void setDatarate(acc_odr datarate)
 		{ // see mag
 			_accState.odr = datarate;
@@ -369,14 +362,14 @@ namespace BerryIMU
 
 		void enableFIFO()  // add fifo mode selection
 		{
-			uint8_t c;
-			c = readReg(CTRL_REG0_XM);
-			writeReg(CTRL_REG0_XM, c | 0x40);		// Enable acc FIFO
+			//uint8_t c;
+			//c = readReg(CTRL_REG0_XM);
+			//writeReg(CTRL_REG0_XM, c | 0x40);		
+			writeBitPatternToReg(CTRL_REG0_XM, 0x40);// Enable acc FIFO
 			msleep(20);								// Wait for change to take effect
-			writeReg(FIFO_CTRL_REG, 0x20 | 0x1F);	// Enable gyro FIFO mode (0x20) and set watermark at 32 samples (0x1F)
+			writeReg(FIFO_CTRL_REG, 0x20 | 0x1F);	// Enable acc FIFO mode (0x20) and set watermark at 32 samples (0x1F)
 			usingFifo = true;
 		}
-
 		void disableFIFO()
 		{
 			uint8_t c;
@@ -395,10 +388,10 @@ namespace BerryIMU
 		{
 			if (usingFifo)
 			{
-				uint8_t c;
-
-				c = readReg(CTRL_REG4_XM);
-				writeReg(CTRL_REG4_XM, c & 0x08);
+				//uint8_t c;
+				//c = readReg(CTRL_REG4_XM);
+				//writeReg(CTRL_REG4_XM, c & 0x08);
+				writeBitPatternToReg(CTRL_REG4_XM, 0x08);
 				msleep(20);
 
 				// store the call back address and start the polling loop
@@ -493,7 +486,7 @@ namespace BerryIMU
 
 
 	private:
-		bool configure(acc_odr datarate, acc_bdu bdu = A_CONTINUOUS_UPDATE, bool enableX = true, bool enableY = true, bool enableZ = true)
+		bool configure(acc_odr datarate = A_ODR_3p125Hz, acc_bdu bdu = A_CONTINUOUS_UPDATE, bool enableX = true, bool enableY = true, bool enableZ = true)
 		{
 			// Configuration according to Tab. 71
 			// Bitmasking just in case
@@ -513,8 +506,7 @@ namespace BerryIMU
 			value |= (0b1111 & datarate) << 4;
 			return writeReg(CTRL_REG1_XM, value);
 		}
-
-		bool configure(acc_scale scale, acc_aa_bandwidth anti_alias_bandwidth = A_BANDWIDTH_773Hz, acc_selftest_mode selftest = A_TEST_OFF, bool spi_interface_mode = 0)
+		bool configure(acc_scale scale = A_SCALE_2g, acc_aa_bandwidth anti_alias_bandwidth = A_BANDWIDTH_773Hz, acc_selftest_mode selftest = A_TEST_OFF, bool spi_interface_mode = 0)
 		{
 			// Configuration according to Tab. 74
 			// Bitmasking just in case
@@ -566,7 +558,7 @@ namespace BerryIMU
 		/// </summary>
 		/// <param name=""></param>
 		/// <returns></returns>
-		Gyr operator=(Gyr&) = delete;
+		Gyr operator=(const Gyr&) = delete;
 		Gyr(const Gyr&) = delete;
 
 		/// End Singleton 
@@ -596,7 +588,6 @@ namespace BerryIMU
 		{
 			return IMU::readRaw(OUT_X_L_G, output, false);
 		}
-
 		bool rotation(float &xRate, float &yRate, float &zRate, rotation_units unit = DEGPERSEC)
 		{
 			int16_t rotData[6];			// 12 bytes
@@ -647,7 +638,6 @@ namespace BerryIMU
 			zRate = ((float)rotData[2] + biasAt2000dps[2]) * rawConversionAt2000dps[2];
 			return true;
 		}
-
 		bool rawRotation(float& xRawRate, float& yRawRate, float& zRawRate)
 		{
 			int16_t rotData[6];			// 12 bytes
@@ -659,7 +649,6 @@ namespace BerryIMU
 			return true;
 		}
 
-	protected:
 		void setDatarate(gyro_odr datarate)
 		{
 			_gyrState.odr = datarate;
@@ -671,14 +660,14 @@ namespace BerryIMU
 
 		void enableFIFO()		// Add fifo mode to include all modes (except ByPass which disables fifo)
 		{
-			uint8_t c;
-			c = readReg(CTRL_REG5_G);
-			writeReg(CTRL_REG5_G, c | 0x40);		// Enable gyro FIFO (see page 44 section 8.6)
+			//uint8_t c;
+			//c = readReg(CTRL_REG5_G);
+			//writeReg(CTRL_REG5_G, c | 0x40);		
+			writeBitPatternToReg(CTRL_REG5_G, 0x40); // Enable gyro FIFO (see page 44 section 8.6)
 			msleep(20);								// Wait for change to take effect
 			writeReg(FIFO_CTRL_REG_G, 0x20 | 0x1F); // Enable gyro FIFO mode (0x20) and set watermark at 32 samples (0x1F)
 			usingFifo = true;
 		}
-
 		void disableFIFO()
 		{
 			uint8_t c;
@@ -695,10 +684,10 @@ namespace BerryIMU
 		{
 			if (usingFifo)
 			{
-				uint8_t c;
-
-				c = readReg(CTRL_REG4_XM);
-				writeReg(CTRL_REG4_XM, c & 0x08);
+				//uint8_t c;
+				//c = readReg(CTRL_REG4_XM);
+				//writeReg(CTRL_REG4_XM, c & 0x08);
+				writeBitPatternToReg(CTRL_REG4_XM, 0x08);
 				msleep(20);
 
 				// store the call back address and start the polling loop
@@ -732,7 +721,7 @@ namespace BerryIMU
 					return false;
 				}
 
-				pollingThread = new std::thread(pollThread, std::ref(*this), waitTime);
+				fifoDevice::pollingThread = new std::thread(pollThread, std::ref(*this), waitTime);
 				return true;
 			}
 			else
@@ -741,9 +730,15 @@ namespace BerryIMU
 		virtual int retrieveFIFOData()
 		{
 			uint8_t command = FIFO_SRC_REG_G;
-			return (readReg(command) & 0x1F);
+			int numberOfValuesInFIFO = (int)(readReg(command) & 0x1F);
+			for (int i = 0; i < numberOfValuesInFIFO; i++)
+			{
+				IMU::readRaw(OUT_X_L_G, &(fifoDevice::fifoData[i]), true);
+			}
+			return numberOfValuesInFIFO;
 		}
 
+	protected:
 		float gain()
 		{
 			switch (_gyrState.scale)
@@ -765,7 +760,7 @@ namespace BerryIMU
 		}
 
 	private:
-		bool configure(gyro_odr odr, gyr_power_mode pd = G_POWER_NORMAL, bool enableX = true, bool enableY = true, bool enableZ = true)
+		bool configure(gyro_odr odr = G_ODR_95_BW_125, gyr_power_mode pd = G_POWER_NORMAL, bool enableX = true, bool enableY = true, bool enableZ = true)
 		{
 			// dr & bw set the data rate (ODR) and cutoff for low-pass filter (Cutoff)
 			_gyrState.odr = odr;
@@ -787,7 +782,6 @@ namespace BerryIMU
 			value |= (0b1111 & odr) << 4;
 			return writeReg(CTRL_REG1_G, value);
 		}
-
 		bool configure(HighPassMode hpm, gyr_high_pass hpcf)
 		{
 			// Tab. 23
@@ -798,8 +792,7 @@ namespace BerryIMU
 			value |= (0b11 & hpm) << 4;
 			return writeReg(CTRL_REG2_G, value);
 		}
-
-		bool configure(gyr_scale scale, gyr_bdu bdu = G_CONTINUOUS_UPDATE, bool bigEndian = false, gyr_selftest_mode selftest = G_TEST_OFF, bool spi_interface_mode = 0)
+		bool configure(gyr_scale scale = G_SCALE_500dps, gyr_bdu bdu = G_CONTINUOUS_UPDATE, bool bigEndian = false, gyr_selftest_mode selftest = G_TEST_OFF, bool spi_interface_mode = 0)
 		{
 			// bdu : Block data update def=0 (0: continuous update; 1: output registers not updated until MSB and LSB have been read)
 			// spi: 0=4 wire interface, 1=3 wire interface
@@ -822,17 +815,27 @@ namespace BerryIMU
 		GyrState _gyrState;
 		rotation_units unit = DEGPERSEC;
 		struct timespec lastReadingTime;
-		bool usingFifo;
 	};	//Class Gyr
 
 	class Mag : IMU
 	{
-	public:
+	private:
 		Mag() : IMU()
 		{
 			_magState.scale = M_SCALE_2Gs;
 			_magState.odr = M_ODR_100Hz;
 		}
+
+	public:
+		static Mag& Get_Instance()
+		{
+			static Mag mag_instance;
+			return mag_instance;
+		}
+
+		Mag(const Mag&) = delete;
+		Mag operator=(const Mag&) = delete;
+
 		bool enable()
 		{
 			if (IMU::enableIMU())
