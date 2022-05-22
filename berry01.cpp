@@ -59,7 +59,7 @@ int main(int argc, char *argv[])
 		gyr.enableFIFO();
 		gyr.setDatarate(G_ODR_95_BW_125);
 		gyr.initiateDataReadyWithCallback(retrieveAccRaw);
-		sleep(200);
+		sleep(20);
 		continuePolling = false;
 		gyr.disableFIFO();
 

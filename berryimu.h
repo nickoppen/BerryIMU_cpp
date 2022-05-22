@@ -204,6 +204,8 @@ namespace BerryIMU
 		{
 			uint8_t c = readReg(reg);
 			writeReg(reg, c | bitPattern);
+			uint8_t d = readReg(reg);			/// test
+			std::cout << std::endl << "Pattern:" << unsigned(bitPattern) << " reg0:" << unsigned(c) << " reg1:" << unsigned(d);	   ///test
 			return readReg(reg);
 		}
 		void			setMessage (std::string msg) { m_message = msg; }
@@ -235,13 +237,15 @@ namespace BerryIMU
 		bool readDataAndExecuteCallback()
 		{
 			int xyzValuesRead;
-			for (uint8_t i; i < 96; i++)
-				fifoData[i] = 0;
+			//for (int i; i < 96; i++)
+			//	fifoData[i] = 0;
 
 			xyzValuesRead = this->retrieveFIFOData();
+			std::cout << std::endl << "About to call back with:" << xyzValuesRead;
 
 			// call the stored call back function
-			return dataReadyCallBack(fifoData, xyzValuesRead);
+			return dataReadyCallBack(fifoData, xyzValuesRead); // 
+			//return true;	// test
 		}
 
 		static 	void pollThread(fifoDevice & device, int waitTime)
@@ -253,6 +257,7 @@ namespace BerryIMU
 				//sleep for most of the time
 				std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
 				continuePolling = device.readDataAndExecuteCallback();	// testing - replace 32 with the actual number of values read
+				//continuePolling = false; //test
 			}
 		}
 
@@ -662,8 +667,10 @@ namespace BerryIMU
 		{
 			//uint8_t c;
 			//c = readReg(CTRL_REG5_G);
-			//writeReg(CTRL_REG5_G, c | 0x40);		
-			writeBitPatternToReg(CTRL_REG5_G, 0x40); // Enable gyro FIFO (see page 44 section 8.6)
+			//writeReg(CTRL_REG5_G, c | 0x40);
+			uint8_t enable = 0x40;
+			//std::cout << std::endl << "enable:" << unsigned(enable);
+			writeBitPatternToReg(CTRL_REG5_G, enable); // Enable gyro FIFO (see page 44 section 8.6)
 			msleep(20);								// Wait for change to take effect
 			writeReg(FIFO_CTRL_REG_G, 0x20 | 0x1F); // Enable gyro FIFO mode (0x20) and set watermark at 32 samples (0x1F)
 			usingFifo = true;
@@ -687,7 +694,9 @@ namespace BerryIMU
 				//uint8_t c;
 				//c = readReg(CTRL_REG4_XM);
 				//writeReg(CTRL_REG4_XM, c & 0x08);
-				writeBitPatternToReg(CTRL_REG4_XM, 0x08);
+				uint8_t init = 0x08;
+				std::cout << std::endl << "init:" << unsigned(init);
+				writeBitPatternToReg(CTRL_REG4_XM, init);
 				msleep(20);
 
 				// store the call back address and start the polling loop
@@ -731,6 +740,7 @@ namespace BerryIMU
 		{
 			uint8_t command = FIFO_SRC_REG_G;
 			int numberOfValuesInFIFO = (int)(readReg(command) & 0x1F);
+			std::cout << std::endl << numberOfValuesInFIFO;
 			for (int i = 0; i < numberOfValuesInFIFO; i++)
 			{
 				IMU::readRaw(OUT_X_L_G, &(fifoDevice::fifoData[i]), true);
